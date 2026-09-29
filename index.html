@@ -1,0 +1,3361 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Alpha Soluções | Landing Pages de Alta Conversão</title>
+    <!-- ==========================================================
+       IDs DE RASTREAMENTO (preencha com seus IDs reais)
+       ========================================================== -->
+  <script>
+    window.ALPHA_TRACKING = {
+      GA4_ID: 'G-409939066',          // Substitua pelo seu ID do GA4
+      META_PIXEL_ID: '000000000000000', // Substitua pelo seu Pixel ID
+      GOOGLE_ADS_ID: 'AW-XXXXXXXXX',    // Substitua pelo seu ID do Google Ads
+      RECAPTCHA_SITE_KEY: '6LcXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX' // Chave pública reCAPTCHA v3
+    };
+  </script>
+
+  <!-- reCAPTCHA v3 (carrega sempre, pois é usado no form) -->
+  <script    /* ==========================================================
+       FORMULÁRIO DE CONTATO + VALIDAÇÃO + LGPD + reCAPTCHA
+       ========================================================== */
+    (function() {
+      'use strict';
+
+      const form = document.getElementById('contact-form');
+      const submitBtn = document.getElementById('submit-btn');
+      const feedback = document.getElementById('form-feedback');
+
+      // ✅ Número de WhatsApp real da Alpha Soluções
+      const WHATSAPP_NUMBER = '5569992684476';
+
+      // ✅ Endpoint do backend (ajuste conforme seu deploy)
+      const API_ENDPOINT = '/api/contato';
+
+      /* ---------- Máscara de telefone ---------- */
+      const whatsappInput = document.getElementById('whatsapp');
+      whatsappInput.addEventListener('input', function(e) {
+        let v = e.target.value.replace(/\D/g, '');
+        if (v.length > 11) v = v.slice(0, 11);
+
+        if (v.length > 6) {
+          if (v.length === 11) {
+            e.target.value = `(${v.slice(0,2)}) ${v.slice(2,7)}-${v.slice(7)}`;
+          } else {
+            e.target.value = `(${v.slice(0,2)}) ${v.slice(2,6)}-${v.slice(6)}`;
+          }
+        } else if (v.length > 2) {
+          e.target.value = `(${v.slice(0,2)}) ${v.slice(2)}`;
+        } else if (v.length > 0) {
+          e.target.value = `(${v}`;
+        } else {
+          e.target.value = '';
+        }
+      });
+
+      /* ---------- Helpers de validação ---------- */
+      function showError(fieldName, message) {
+        const errorEl = document.querySelector(`[data-error-for="${fieldName}"]`);
+        const inputEl = document.getElementById(fieldName);
+        if (errorEl) {
+          if (message) errorEl.querySelector('span').textContent = message;
+          errorEl.classList.add('visible');
+        }
+        if (inputEl) inputEl.classList.add('error');
+      }
+
+      function clearError(fieldName) {
+        const errorEl = document.querySelector(`[data-error-for="${fieldName}"]`);
+        const inputEl = document.getElementById(fieldName);
+        if (errorEl) errorEl.classList.remove('visible');
+        if (inputEl) inputEl.classList.remove('error');
+      }
+
+      function clearAllErrors() {
+        document.querySelectorAll('.form-error.visible').forEach(el => el.classList.remove('visible'));
+        document.querySelectorAll('.form-input.error, .form-select.error, .form-textarea.error').forEach(el => el.classList.remove('error'));
+        document.querySelector('.form-consent').classList.remove('error');
+      }
+
+      /* ---------- Validação ---------- */
+      function validateForm() {
+        clearAllErrors();
+        let isValid = true;
+
+        const nome = document.getElementById('nome').value.trim();
+        if (nome.length < 3) {
+          showError('nome', 'Por favor, informe seu nome completo.');
+          isValid = false;
+        }
+
+        const email = document.getElementById('email').value.trim();
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+          showError('email', 'Informe um e-mail válido (ex: voce@empresa.com.br).');
+          isValid = false;
+        }
+
+        const whatsapp = document.getElementById('whatsapp').value.replace(/\D/g, '');
+        if (whatsapp.length < 10 || whatsapp.length > 11) {
+          showError('whatsapp', 'Informe um WhatsApp válido com DDD.');
+          isValid = false;
+        }
+
+        const investimento = document.getElementById('investimento').value;
+        if (!investimento) {
+          showError('investimento', 'Selecione uma faixa de investimento.');
+          isValid = false;
+        }
+
+        const consentimento = document.getElementById('consentimento').checked;
+        if (!consentimento) {
+          showError('consentimento', 'É necessário aceitar os termos para enviar o formulário.');
+          document.querySelector('.form-consent').classList.add('error');
+          isValid = false;
+        }
+
+        return isValid;
+      }
+
+      /* ---------- Limpa erro ao digitar ---------- */
+      ['nome', 'email', 'whatsapp', 'investimento'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.addEventListener('input', () => clearError(id));
+          el.addEventListener('change', () => clearError(id));
+        }
+      });
+
+      document.getElementById('consentimento').addEventListener('change', function() {
+        if (this.checked) {
+          clearError('consentimento');
+          document.querySelector('.form-consent').classList.remove('error');
+        }
+      });
+
+      /* ---------- Feedback ---------- */
+      function showFeedback(type, title, message) {
+        feedback.className = 'form-feedback visible ' + type;
+        const icon = type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation';
+        feedback.innerHTML = `
+          <i class="fa-solid ${icon}"></i>
+          <div>
+            <strong>${title}</strong>
+            <span>${message}</span>
+          </div>
+        `;
+        feedback.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+
+      function hideFeedback() {
+        feedback.classList.remove('visible');
+      }
+
+      /* ---------- reCAPTCHA v3 ---------- */
+      async function getRecaptchaToken() {
+        if (typeof grecaptcha === 'undefined') return null;
+        try {
+          return await grecaptcha.execute(window.ALPHA_TRACKING.RECAPTCHA_SITE_KEY, {
+            action: 'submit_contact'
+          });
+        } catch (err) {
+          console.warn('reCAPTCHA indisponível:', err);
+          return null;
+        }
+      }
+
+      /* ---------- Envio ---------- */
+      form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        hideFeedback();
+
+        if (!validateForm()) {
+          showFeedback('error', 'Verifique os campos', 'Alguns campos precisam ser corrigidos antes de enviar.');
+          return;
+        }
+
+        submitBtn.classList.add('loading');
+
+        // Coleta dos dados
+        const formData = {
+          nome: document.getElementById('nome').value.trim(),
+          email: document.getElementById('email').value.trim(),
+          whatsapp: document.getElementById('whatsapp').value.trim(),
+          empresa: document.getElementById('empresa').value.trim(),
+          investimento: document.getElementById('investimento').value,
+          mensagem: document.getElementById('mensagem').value.trim(),
+          consentimento: true,
+          timestamp: new Date().toISOString(),
+          origem: window.location.href,
+          utm: {
+            source: new URLSearchParams(location.search).get('utm_source') || '',
+            medium: new URLSearchParams(location.search).get('utm_medium') || '',
+            campaign: new URLSearchParams(location.search).get('utm_campaign') || '',
+            term: new URLSearchParams(location.search).get('utm_term') || '',
+            content: new URLSearchParams(location.search).get('utm_content') || ''
+          }
+        };
+
+        // Token reCAPTCHA
+        const recaptchaToken = await getRecaptchaToken();
+
+        try {
+          const response = await fetch(API_ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...formData, recaptchaToken })
+          });
+
+          const result = await response.json().catch(() => ({}));
+
+          if (!response.ok || result.success === false) {
+            throw new Error(result.message || 'Falha no envio');
+          }
+
+          // Sucesso
+          submitBtn.classList.remove('loading');
+          showFeedback(
+            'success',
+            'Solicitação enviada com sucesso!',
+            'Redirecionando para o WhatsApp... Caso não abra, verifique o bloqueador de pop-ups.'
+          );
+
+          // Registra consentimento LGPD no localStorage (backup local)
+          try {
+            const lgpdLog = JSON.parse(localStorage.getItem('alpha_lgpd_log') || '[]');
+            lgpdLog.push({
+              timestamp: formData.timestamp,
+              email: formData.email,
+              consentimento: true,
+              versao: '1.0',
+              ip_hash: result.ipHash || null
+            });
+            localStorage.setItem('alpha_lgpd_log', JSON.stringify(lgpdLog));
+          } catch (err) { /* silent */ }
+
+          // Monta mensagem para o WhatsApp
+          const waMessage =
+            `*Nova Solicitação — Alpha Soluções*%0A%0A` +
+            `*Nome:* ${encodeURIComponent(formData.nome)}%0A` +
+            `*E-mail:* ${encodeURIComponent(formData.email)}%0A` +
+            `*WhatsApp:* ${encodeURIComponent(formData.whatsapp)}%0A` +
+            `*Empresa:* ${encodeURIComponent(formData.empresa || 'Não informado')}%0A` +
+            `*Investimento em Ads:* ${encodeURIComponent(formData.investimento)}%0A` +
+            `*Mensagem:* ${encodeURIComponent(formData.mensagem || 'Sem mensagem adicional')}%0A%0A` +
+            `✅ Consentimento LGPD: Autorizado`;
+
+          setTimeout(() => {
+            window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${waMessage}`, '_blank');
+            form.reset();
+            setTimeout(hideFeedback, 6000);
+          }, 1200);
+
+        } catch (err) {
+          console.error('Erro no envio:', err);
+          submitBtn.classList.remove('loading');
+          showFeedback(
+            'error',
+            'Erro ao enviar',
+            'Não foi possível enviar sua solicitação agora. Tente novamente ou fale conosco pelo WhatsApp.'
+          );
+        }
+      });
+    })();</script>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  
+  <!-- Font Awesome 6 CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+  <style>
+    /* ==========================================================
+       RESET & DESIGN SYSTEM
+       ========================================================== */
+    :root {
+      --bg-dark: #07090e;
+      --bg-card: #0f141c;
+      --bg-card-hover: #161d28;
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-accent: rgba(235, 47, 60, 0.35);
+      
+      --accent-red: #eb2f3c;
+      --accent-red-glow: rgba(235, 47, 60, 0.45);
+      --accent-green: #00e676;
+      --accent-green-glow: rgba(0, 230, 118, 0.35);
+      
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-light: #cbd5e1;
+      
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-lg: 22px;
+      --radius-full: 9999px;
+      
+      --font-primary: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-display: 'Space Grotesk', var(--font-primary);
+      --transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; font-size: 16px; }
+
+    body {
+      font-family: var(--font-primary);
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      line-height: 1.6;
+      overflow-x: hidden;
+      background-image: 
+        radial-gradient(circle at 15% 15%, rgba(235, 47, 60, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 85% 65%, rgba(0, 230, 118, 0.05) 0%, transparent 45%);
+      background-attachment: fixed;
+    }
+
+    body.modal-open { overflow: hidden; }
+
+    img { max-width: 100%; height: auto; display: block; }
+    a { text-decoration: none; color: inherit; }
+
+    .container { width: 100%; max-width: 1200px; margin: 0 auto; padding: 0 1.5rem; }
+
+    /* ==========================================================
+       TYPOGRAPHY & TAGS
+       ========================================================== */
+    .badge-pill {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      padding: 0.4rem 1rem;
+      background: rgba(235, 47, 60, 0.12);
+      border: 1px solid rgba(235, 47, 60, 0.3);
+      color: #ff6b75;
+      font-size: 0.825rem; font-weight: 700; letter-spacing: 0.05em;
+      text-transform: uppercase; border-radius: var(--radius-full);
+      margin-bottom: 1.25rem;
+    }
+
+    .badge-pill i { font-size: 0.75rem; color: var(--accent-red); }
+
+    .section-title-wrap { text-align: center; max-width: 760px; margin: 0 auto 3.5rem auto; }
+
+    .section-title {
+      font-family: var(--font-display);
+      font-size: clamp(1.85rem, 3.5vw, 2.75rem);
+      font-weight: 700; line-height: 1.2; color: #ffffff;
+      letter-spacing: -0.02em; margin-bottom: 1rem;
+    }
+
+    .section-subtitle { font-size: clamp(1rem, 1.8vw, 1.15rem); color: var(--text-muted); line-height: 1.6; }
+
+    .highlight-red { color: var(--accent-red); position: relative; }
+    .highlight-green { color: var(--accent-green); }
+
+    /* ==========================================================
+       BUTTONS & CTA
+       ========================================================== */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 0.75rem;
+      font-family: var(--font-primary); font-weight: 700; font-size: 1.05rem;
+      padding: 1rem 2rem; border-radius: var(--radius-full);
+      cursor: pointer; border: none; transition: var(--transition);
+      text-align: center; position: relative; overflow: hidden;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #ff3b47 0%, #c41824 100%);
+      color: #ffffff;
+      box-shadow: 0 10px 25px -5px var(--accent-red-glow), 0 0 15px 0 rgba(235, 47, 60, 0.3);
+    }
+
+    .btn-primary::before {
+      content: ''; position: absolute; top: 0; left: -100%;
+      width: 100%; height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent);
+      transition: 0.6s ease;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-3px) scale(1.02);
+      box-shadow: 0 15px 35px -5px rgba(235, 47, 60, 0.6), 0 0 25px 5px rgba(235, 47, 60, 0.4);
+      background: linear-gradient(135deg, #ff4d58 0%, #db1c29 100%);
+    }
+
+    .btn-primary:hover::before { left: 100%; }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05); color: #ffffff;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-2px);
+    }
+
+    /* ==========================================================
+       HEADER
+       ========================================================== */
+    .header {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(7, 9, 14, 0.85);
+      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 0.85rem 0;
+    }
+
+    .nav-wrap { display: flex; align-items: center; justify-content: space-between; }
+
+    .brand-logo-link { display: flex; align-items: center; gap: 0.85rem; }
+
+    .brand-logo-img {
+      width: 44px; height: 44px; border-radius: 50%; object-fit: cover;
+      box-shadow: 0 0 14px rgba(235, 47, 60, 0.45);
+      border: 1px solid rgba(235, 47, 60, 0.5);
+    }
+
+    .brand-logo-text { display: flex; flex-direction: column; }
+
+    .brand-title {
+      font-family: var(--font-display); font-weight: 800; font-size: 1.15rem;
+      letter-spacing: 0.1em; color: #ffffff; line-height: 1.1;
+    }
+
+    .brand-tagline {
+      font-size: 0.68rem; color: var(--accent-green);
+      letter-spacing: 0.15em; font-weight: 700; text-transform: uppercase;
+    }
+
+    .nav-cta { display: flex; align-items: center; gap: 1rem; }
+    .nav-btn { padding: 0.55rem 1.25rem; font-size: 0.875rem; }
+
+    /* ==========================================================
+       HERO SECTION
+       ========================================================== */
+    .hero { position: relative; padding: 4.5rem 0 5rem 0; overflow: hidden; }
+
+    .hero-grid {
+      display: grid; grid-template-columns: 1.15fr 0.85fr;
+      gap: 3.5rem; align-items: center;
+    }
+
+    .hero-content { position: relative; z-index: 2; }
+
+    .hero-headline {
+      font-family: var(--font-display);
+      font-size: clamp(2.2rem, 4.2vw, 3.6rem);
+      font-weight: 800; line-height: 1.12; letter-spacing: -0.03em;
+      color: #ffffff; margin-bottom: 1.25rem;
+    }
+
+    .hero-subheadline {
+      font-size: clamp(1.05rem, 2vw, 1.25rem);
+      color: var(--text-light); line-height: 1.6;
+      margin-bottom: 2rem; font-weight: 400;
+    }
+
+    .hero-cta-group { display: flex; flex-direction: column; gap: 1rem; margin-bottom: 2.25rem; }
+
+    .cta-guarantee-note { display: flex; align-items: center; gap: 0.5rem; color: var(--text-muted); font-size: 0.85rem; }
+    .cta-guarantee-note i { color: var(--accent-green); }
+
+    .hero-stats-row {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem;
+      padding-top: 1.5rem; border-top: 1px solid var(--border-subtle);
+    }
+
+    .stat-number {
+      font-family: var(--font-display); font-size: 1.5rem; font-weight: 700;
+      color: #ffffff; line-height: 1;
+    }
+
+    .stat-number span { color: var(--accent-red); }
+    .stat-label { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.35rem; }
+
+    .hero-media-wrap { position: relative; }
+
+    .media-glow {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 110%; height: 110%;
+      background: radial-gradient(circle, rgba(235, 47, 60, 0.22) 0%, rgba(0, 230, 118, 0.08) 50%, transparent 70%);
+      filter: blur(40px); z-index: 1;
+    }
+
+    .hero-card {
+      position: relative; z-index: 2; background: var(--bg-card);
+      border: 1px solid var(--border-accent); border-radius: var(--radius-lg);
+      overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.75);
+    }
+
+    .hero-preview-topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.75rem 1.25rem; background: rgba(255, 255, 255, 0.03);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .topbar-dots { display: flex; gap: 0.4rem; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .dot-red { background: #ff5f56; }
+    .dot-yellow { background: #ffbd2e; }
+    .dot-green { background: #27c93f; }
+    .topbar-title { font-size: 0.75rem; color: var(--text-muted); font-family: monospace; }
+
+    .hero-image {
+      width: 100%; height: 380px; object-fit: cover; display: block;
+      filter: brightness(0.92) contrast(1.05);
+    }
+
+    .hero-floating-badge {
+      position: absolute; bottom: 1.5rem; right: 1.5rem;
+      background: rgba(15, 20, 28, 0.95);
+      border: 1px solid rgba(0, 230, 118, 0.4);
+      padding: 0.85rem 1.25rem; border-radius: var(--radius-md);
+      display: flex; align-items: center; gap: 0.85rem;
+      backdrop-filter: blur(8px); box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+      z-index: 3;
+    }
+
+    .badge-icon-wrap {
+      width: 38px; height: 38px; border-radius: 50%;
+      background: rgba(0, 230, 118, 0.15);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--accent-green); font-size: 1.1rem;
+    }
+
+    .badge-text-val { font-size: 0.95rem; font-weight: 700; color: #ffffff; line-height: 1.2; }
+    .badge-text-lbl { font-size: 0.75rem; color: var(--text-muted); }
+
+    /* ==========================================================
+       BENEFITS
+       ========================================================== */
+    .benefits-section { padding: 6rem 0; position: relative; }
+
+    .benefits-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.75rem; }
+
+    .benefit-card {
+      background: var(--bg-card); border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg); padding: 2.25rem 2rem;
+      transition: var(--transition); display: flex; flex-direction: column;
+      position: relative; overflow: hidden;
+    }
+
+    .benefit-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg, var(--accent-red), transparent);
+      opacity: 0; transition: var(--transition);
+    }
+
+    .benefit-card:hover {
+      transform: translateY(-6px); background: var(--bg-card-hover);
+      border-color: rgba(235, 47, 60, 0.3);
+      box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.5);
+    }
+
+    .benefit-card:hover::before { opacity: 1; }
+
+    .benefit-icon-container {
+      width: 60px; height: 60px; border-radius: var(--radius-md);
+      background: rgba(235, 47, 60, 0.1);
+      border: 1px solid rgba(235, 47, 60, 0.25);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.5rem; color: var(--accent-red);
+      margin-bottom: 1.75rem; transition: var(--transition);
+    }
+
+    .benefit-card:hover .benefit-icon-container {
+      background: var(--accent-red); color: #ffffff;
+      transform: scale(1.08); box-shadow: 0 0 20px var(--accent-red-glow);
+    }
+
+    .benefit-title {
+      font-family: var(--font-display); font-size: 1.35rem; font-weight: 700;
+      color: #ffffff; margin-bottom: 0.85rem; line-height: 1.3;
+    }
+
+    .benefit-desc { color: var(--text-muted); font-size: 0.95rem; line-height: 1.6; margin-bottom: 1.5rem; flex-grow: 1; }
+
+    .benefit-footer-tag {
+      font-size: 0.8rem; font-weight: 600; color: var(--accent-green);
+      display: flex; align-items: center; gap: 0.4rem;
+    }
+
+    /* ==========================================================
+       PRODUCT / OBJECTIONS
+       ========================================================== */
+    .product-section {
+      padding: 6rem 0; background: rgba(15, 20, 28, 0.5);
+      border-top: 1px solid var(--border-subtle);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .product-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4rem; align-items: center; }
+
+    .product-details h3 {
+      font-family: var(--font-display); font-size: 2.2rem; font-weight: 700;
+      line-height: 1.2; margin-bottom: 1.25rem;
+    }
+
+    .product-details p { color: var(--text-light); font-size: 1.05rem; margin-bottom: 1.75rem; }
+
+    .features-checklist { list-style: none; display: flex; flex-direction: column; gap: 1rem; margin-bottom: 2.25rem; }
+
+    .features-checklist li { display: flex; align-items: flex-start; gap: 0.85rem; font-size: 0.975rem; color: var(--text-light); }
+    .features-checklist li i { color: var(--accent-green); font-size: 1.1rem; margin-top: 0.2rem; flex-shrink: 0; }
+
+    .objections-box {
+      background: var(--bg-card); border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg); padding: 2.5rem;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+    }
+
+    .objections-header {
+      font-family: var(--font-display); font-size: 1.35rem; font-weight: 700;
+      color: #ffffff; margin-bottom: 1.5rem;
+      display: flex; align-items: center; gap: 0.6rem;
+    }
+
+    .objections-header i { color: var(--accent-red); }
+
+    .objection-item { padding: 1.25rem 0; border-bottom: 1px solid var(--border-subtle); }
+    .objection-item:last-child { border-bottom: none; padding-bottom: 0; }
+
+    .objection-question {
+      font-size: 1rem; font-weight: 700; color: #ffffff;
+      margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.6rem;
+    }
+
+    .objection-question i { color: var(--accent-red); font-size: 0.85rem; }
+
+    .objection-answer { font-size: 0.9rem; color: var(--text-muted); line-height: 1.55; padding-left: 1.45rem; }
+
+    /* ==========================================================
+       TESTIMONIALS
+       ========================================================== */
+    .testimonials-section { padding: 6rem 0; }
+
+    .testimonials-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2rem; }
+
+    .testimonial-card {
+      background: var(--bg-card); border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg); padding: 2.25rem 2rem;
+      display: flex; flex-direction: column; justify-content: space-between;
+      transition: var(--transition); position: relative;
+    }
+
+    .testimonial-card:hover {
+      transform: translateY(-5px); border-color: rgba(255, 255, 255, 0.15);
+      background: var(--bg-card-hover);
+    }
+
+    .stars-wrap { display: flex; gap: 0.3rem; color: #f59e0b; font-size: 0.9rem; margin-bottom: 1.25rem; }
+
+    .testimonial-quote {
+      font-size: 0.95rem; color: var(--text-light); font-style: italic;
+      line-height: 1.6; margin-bottom: 1.75rem; flex-grow: 1;
+    }
+
+    .client-profile {
+      display: flex; align-items: center; gap: 1rem;
+      padding-top: 1.25rem; border-top: 1px solid var(--border-subtle);
+    }
+
+    .client-avatar {
+      width: 48px; height: 48px; border-radius: 50%; object-fit: cover;
+      border: 2px solid var(--accent-red);
+    }
+
+    .client-name { font-size: 0.95rem; font-weight: 700; color: #ffffff; }
+    .client-role { font-size: 0.8rem; color: var(--text-muted); }
+
+    .metric-badge {
+      display: inline-block; margin-top: 0.5rem;
+      background: rgba(0, 230, 118, 0.1); color: var(--accent-green);
+      font-size: 0.75rem; font-weight: 700;
+      padding: 0.2rem 0.5rem; border-radius: var(--radius-sm);
+    }
+
+    /* ==========================================================
+       FINAL CTA
+       ========================================================== */
+    .final-cta-section { padding: 6rem 0; position: relative; }
+
+    .cta-card {
+      background: linear-gradient(135deg, #131924 0%, #0c0f16 100%);
+      border: 1px solid var(--border-accent);
+      border-radius: var(--radius-lg); padding: 4.5rem 2rem;
+      text-align: center; position: relative; overflow: hidden;
+      box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.8);
+    }
+
+    .cta-card::after {
+      content: ''; position: absolute; top: -50%; left: 50%; transform: translateX(-50%);
+      width: 600px; height: 300px;
+      background: radial-gradient(circle, rgba(235, 47, 60, 0.25) 0%, transparent 70%);
+      filter: blur(50px); z-index: 1; pointer-events: none;
+    }
+
+    .cta-card-content { position: relative; z-index: 2; max-width: 700px; margin: 0 auto; }
+
+    .cta-heading {
+      font-family: var(--font-display); font-size: clamp(2rem, 3.8vw, 3rem);
+      font-weight: 800; line-height: 1.15; color: #ffffff; margin-bottom: 1.25rem;
+    }
+
+    .cta-subtext { font-size: 1.1rem; color: var(--text-muted); margin-bottom: 2.5rem; line-height: 1.6; }
+
+    .cta-button-container { display: flex; flex-direction: column; align-items: center; gap: 1rem; }
+
+    /* ==========================================================
+       FOOTER
+       ========================================================== */
+    .footer { background: #040507; border-top: 1px solid var(--border-subtle); padding: 4rem 0 2rem 0; }
+
+    .footer-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 3rem; margin-bottom: 3.5rem; }
+
+    .footer-brand-info p { color: var(--text-muted); font-size: 0.9rem; margin-top: 1rem; max-width: 320px; line-height: 1.6; }
+
+    .footer-social-links { display: flex; gap: 0.85rem; margin-top: 1.25rem; }
+
+    .social-btn {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-subtle);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--text-light); font-size: 0.9rem; transition: var(--transition);
+    }
+
+    .social-btn:hover {
+      background: var(--accent-red); color: #ffffff;
+      border-color: var(--accent-red); transform: translateY(-2px);
+    }
+
+    .footer-col-title {
+      font-family: var(--font-display); font-size: 1rem; font-weight: 700;
+      color: #ffffff; margin-bottom: 1.25rem; letter-spacing: 0.02em;
+    }
+
+    .footer-links-list { list-style: none; display: flex; flex-direction: column; gap: 0.75rem; }
+
+    .footer-links-list a {
+      color: var(--text-muted); font-size: 0.875rem;
+      transition: var(--transition); cursor: pointer;
+    }
+
+    .footer-links-list a:hover { color: #ffffff; padding-left: 4px; }
+
+    .footer-bottom {
+      padding-top: 2rem; border-top: 1px solid var(--border-subtle);
+      display: flex; justify-content: space-between; align-items: center;
+      flex-wrap: wrap; gap: 1rem; font-size: 0.825rem; color: var(--text-muted);
+    }
+
+    /* ==========================================================
+       MODAIS (TERMOS & PRIVACIDADE)
+       ========================================================== */
+    .modal-overlay {
+      position: fixed; inset: 0; z-index: 9999;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      display: flex; align-items: center; justify-content: center;
+      padding: 1.5rem;
+      opacity: 0; visibility: hidden;
+      transition: opacity 0.3s ease, visibility 0.3s ease;
+    }
+
+    .modal-overlay.active { opacity: 1; visibility: visible; }
+
+    .modal-container {
+      background: var(--bg-card);
+      border: 1px solid var(--border-accent);
+      border-radius: var(--radius-lg);
+      width: 100%; max-width: 860px; max-height: 90vh;
+      display: flex; flex-direction: column;
+      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.9), 0 0 40px rgba(235, 47, 60, 0.15);
+      transform: translateY(20px) scale(0.98);
+      transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      overflow: hidden;
+    }
+
+    .modal-overlay.active .modal-container { transform: translateY(0) scale(1); }
+
+    .modal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1.5rem 2rem;
+      background: linear-gradient(135deg, rgba(235, 47, 60, 0.12) 0%, rgba(15, 20, 28, 0) 100%);
+      border-bottom: 1px solid var(--border-subtle);
+      flex-shrink: 0;
+    }
+
+    .modal-title-wrap { display: flex; align-items: center; gap: 0.85rem; }
+
+    .modal-icon {
+      width: 42px; height: 42px; border-radius: var(--radius-md);
+      background: rgba(235, 47, 60, 0.15);
+      border: 1px solid rgba(235, 47, 60, 0.35);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--accent-red); font-size: 1.1rem;
+    }
+
+    .modal-title {
+      font-family: var(--font-display); font-size: 1.35rem; font-weight: 700;
+      color: #ffffff; line-height: 1.2;
+    }
+
+    .modal-subtitle { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem; }
+
+    .modal-close-btn {
+      width: 38px; height: 38px; border-radius: 50%;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-light); font-size: 1rem;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: var(--transition); flex-shrink: 0;
+    }
+
+    .modal-close-btn:hover {
+      background: var(--accent-red); color: #ffffff;
+      border-color: var(--accent-red); transform: rotate(90deg);
+    }
+
+    .modal-body {
+      padding: 2rem;
+      overflow-y: auto;
+      color: var(--text-light);
+      font-size: 0.925rem;
+      line-height: 1.7;
+      scrollbar-width: thin;
+      scrollbar-color: var(--accent-red) transparent;
+    }
+
+    .modal-body::-webkit-scrollbar { width: 8px; }
+    .modal-body::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.03); }
+    .modal-body::-webkit-scrollbar-thumb {
+      background: rgba(235, 47, 60, 0.5);
+      border-radius: 4px;
+    }
+    .modal-body::-webkit-scrollbar-thumb:hover { background: var(--accent-red); }
+
+    .modal-body h3 {
+      font-family: var(--font-display);
+      font-size: 1.1rem; font-weight: 700;
+      color: #ffffff; margin: 1.75rem 0 0.75rem 0;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex; align-items: center; gap: 0.5rem;
+    }
+
+    .modal-body h3:first-child { margin-top: 0; }
+
+    .modal-body h3 i { color: var(--accent-red); font-size: 0.9rem; }
+
+    .modal-body p { margin-bottom: 1rem; color: var(--text-muted); }
+
+    .modal-body ul {
+      list-style: none; margin: 0.75rem 0 1.25rem 0;
+      display: flex; flex-direction: column; gap: 0.5rem;
+    }
+
+    .modal-body ul li {
+      position: relative; padding-left: 1.5rem;
+      color: var(--text-muted); font-size: 0.9rem;
+    }
+
+    .modal-body ul li::before {
+      content: '\f00c';
+      font-family: 'Font Awesome 6 Free';
+      font-weight: 900;
+      position: absolute; left: 0; top: 0.15rem;
+      color: var(--accent-green); font-size: 0.75rem;
+    }
+
+    .modal-body strong { color: #ffffff; font-weight: 600; }
+
+    .modal-body .modal-alert {
+      background: rgba(235, 47, 60, 0.08);
+      border-left: 3px solid var(--accent-red);
+      border-radius: var(--radius-sm);
+      padding: 1rem 1.25rem;
+      margin: 1.25rem 0;
+      font-size: 0.875rem;
+      color: var(--text-light);
+    }
+
+    .modal-body .modal-alert i { color: var(--accent-red); margin-right: 0.4rem; }
+
+    .modal-footer {
+      padding: 1.25rem 2rem;
+      border-top: 1px solid var(--border-subtle);
+      background: rgba(0, 0, 0, 0.2);
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 1rem; flex-wrap: wrap; flex-shrink: 0;
+    }
+
+    .modal-footer-note { font-size: 0.78rem; color: var(--text-muted); }
+
+    .modal-footer .btn { padding: 0.75rem 1.5rem; font-size: 0.9rem; }
+
+    /* ==========================================================
+       RESPONSIVIDADE
+       ========================================================== */
+    @media (max-width: 992px) {
+      .hero-grid { grid-template-columns: 1fr; gap: 2.5rem; text-align: center; }
+      .badge-pill { margin-left: auto; margin-right: auto; }
+      .hero-cta-group { align-items: center; }
+      .hero-stats-row { max-width: 500px; margin: 0 auto; }
+      .product-grid { grid-template-columns: 1fr; gap: 3rem; }
+      .benefits-grid, .testimonials-grid { grid-template-columns: 1fr 1fr; }
+      .footer-grid { grid-template-columns: 1fr 1fr; gap: 2rem; }
+    }
+
+    @media (max-width: 640px) {
+      .benefits-grid, .testimonials-grid { grid-template-columns: 1fr; }
+      .footer-grid { grid-template-columns: 1fr; }
+      .hero-stats-row { grid-template-columns: 1fr; gap: 1rem; }
+      .btn { width: 100%; }
+      .footer-bottom { flex-direction: column; text-align: center; }
+      .brand-tagline { display: none; }
+
+      .modal-overlay { padding: 0; }
+      .modal-container {
+        max-height: 100vh; height: 100vh;
+        border-radius: 0; border: none;
+      }
+      .modal-header { padding: 1.15rem 1.25rem; }
+      .modal-body { padding: 1.5rem 1.25rem; }
+      .modal-footer {
+        padding: 1rem 1.25rem;
+        flex-direction: column;
+        text-align: center;
+      }
+      .modal-footer .btn { width: 100%; }
+    }
+        /* ==========================================================
+       BANNER DE COOKIES LGPD
+       ========================================================== */
+    .cookie-banner {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 9998;
+      background: rgba(15, 20, 28, 0.98);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-top: 1px solid var(--border-accent);
+      box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.6);
+      padding: 1.5rem;
+      transform: translateY(120%);
+      transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .cookie-banner.visible { transform: translateY(0); }
+
+    .cookie-banner-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
+
+    .cookie-icon-wrap {
+      width: 52px;
+      height: 52px;
+      border-radius: var(--radius-md);
+      background: rgba(235, 47, 60, 0.12);
+      border: 1px solid rgba(235, 47, 60, 0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent-red);
+      font-size: 1.4rem;
+      flex-shrink: 0;
+    }
+
+    .cookie-text-wrap { flex: 1; min-width: 260px; }
+
+    .cookie-title {
+      font-family: var(--font-display);
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 0.35rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .cookie-title i { color: var(--accent-green); font-size: 0.85rem; }
+
+    .cookie-desc {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    .cookie-desc a {
+      color: var(--accent-green);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .cookie-desc a:hover { color: #4dffa0; }
+
+    .cookie-actions {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      flex-shrink: 0;
+    }
+
+    .cookie-btn {
+      font-family: var(--font-primary);
+      font-weight: 700;
+      font-size: 0.875rem;
+      padding: 0.7rem 1.35rem;
+      border-radius: var(--radius-full);
+      cursor: pointer;
+      border: none;
+      transition: var(--transition);
+      white-space: nowrap;
+    }
+
+    .cookie-btn-accept {
+      background: linear-gradient(135deg, #ff3b47 0%, #c41824 100%);
+      color: #ffffff;
+      box-shadow: 0 5px 15px -3px var(--accent-red-glow);
+    }
+
+    .cookie-btn-accept:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px -3px rgba(235, 47, 60, 0.6);
+    }
+
+    .cookie-btn-reject {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text-light);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .cookie-btn-reject:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: #ffffff;
+    }
+
+    .cookie-btn-customize {
+      background: transparent;
+      color: var(--accent-green);
+      border: 1px solid rgba(0, 230, 118, 0.35);
+    }
+
+    .cookie-btn-customize:hover {
+      background: rgba(0, 230, 118, 0.1);
+      border-color: var(--accent-green);
+    }
+
+    /* Painel de personalização */
+    .cookie-preferences {
+      max-width: 1200px;
+      margin: 1.5rem auto 0 auto;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border-subtle);
+      display: none;
+    }
+
+    .cookie-preferences.visible { display: block; }
+
+    .cookie-pref-header {
+      font-family: var(--font-display);
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 1.25rem;
+    }
+
+    .cookie-pref-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .cookie-pref-item {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1.5rem;
+      padding: 1rem 1.25rem;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      transition: var(--transition);
+    }
+
+    .cookie-pref-item:hover { background: rgba(255, 255, 255, 0.05); }
+
+    .cookie-pref-info { flex: 1; }
+
+    .cookie-pref-title {
+      font-size: 0.925rem;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 0.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .cookie-pref-title i { color: var(--accent-red); font-size: 0.8rem; }
+
+    .cookie-pref-title .badge-essential {
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 0.15rem 0.5rem;
+      background: rgba(0, 230, 118, 0.15);
+      color: var(--accent-green);
+      border-radius: var(--radius-full);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .cookie-pref-desc {
+      font-size: 0.825rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* Toggle switch */
+    .cookie-toggle {
+      position: relative;
+      width: 48px;
+      height: 26px;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+
+    .cookie-toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .cookie-toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 999px;
+      transition: var(--transition);
+    }
+
+    .cookie-toggle-slider::before {
+      content: '';
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      left: 3px;
+      top: 3px;
+      background: #ffffff;
+      border-radius: 50%;
+      transition: var(--transition);
+    }
+
+    .cookie-toggle input:checked + .cookie-toggle-slider {
+      background: var(--accent-green);
+      box-shadow: 0 0 12px rgba(0, 230, 118, 0.5);
+    }
+
+    .cookie-toggle input:checked + .cookie-toggle-slider::before {
+      transform: translateX(22px);
+    }
+
+    .cookie-toggle input:disabled + .cookie-toggle-slider {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .cookie-pref-actions {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+
+    /* Botão flutuante de cookies */
+    .cookie-float-btn {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 1.5rem;
+      z-index: 9997;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-light);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 1.1rem;
+      transition: var(--transition);
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4);
+      opacity: 0;
+      visibility: hidden;
+    }
+
+    .cookie-float-btn.visible { opacity: 1; visibility: visible; }
+
+    .cookie-float-btn:hover {
+      background: var(--accent-red);
+      color: #ffffff;
+      border-color: var(--accent-red);
+      transform: scale(1.1) rotate(15deg);
+    }
+
+    /* ==========================================================
+       FORMULÁRIO DE CONTATO
+       ========================================================== */
+    .contact-section {
+      padding: 6rem 0;
+      background: rgba(15, 20, 28, 0.5);
+      border-top: 1px solid var(--border-subtle);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .contact-grid {
+      display: grid;
+      grid-template-columns: 1fr 1.15fr;
+      gap: 3.5rem;
+      align-items: start;
+    }
+
+    .contact-info h3 {
+      font-family: var(--font-display);
+      font-size: 2rem;
+      font-weight: 700;
+      line-height: 1.2;
+      margin-bottom: 1.25rem;
+      color: #ffffff;
+    }
+
+    .contact-info p {
+      color: var(--text-light);
+      font-size: 1rem;
+      margin-bottom: 2rem;
+      line-height: 1.6;
+    }
+
+    .contact-benefits {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 1.1rem;
+      margin-bottom: 2rem;
+    }
+
+    .contact-benefits li {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.85rem;
+      font-size: 0.95rem;
+      color: var(--text-light);
+    }
+
+    .contact-benefits li i {
+      color: var(--accent-green);
+      font-size: 1.1rem;
+      margin-top: 0.2rem;
+      flex-shrink: 0;
+    }
+
+    .contact-benefits li strong { color: #ffffff; font-weight: 700; }
+
+    .contact-trust-badges {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    .trust-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .trust-badge i { color: var(--accent-green); }
+
+    /* Form card */
+    .contact-form-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 2.5rem;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .contact-form-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--accent-red), var(--accent-green));
+    }
+
+    .form-title {
+      font-family: var(--font-display);
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 0.4rem;
+    }
+
+    .form-subtitle {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+      margin-bottom: 1.75rem;
+    }
+
+    .form-group {
+      margin-bottom: 1.15rem;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 0.825rem;
+      font-weight: 600;
+      color: var(--text-light);
+      margin-bottom: 0.5rem;
+    }
+
+    .form-label .required { color: var(--accent-red); }
+
+    .form-input,
+    .form-select,
+    .form-textarea {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 0.85rem 1rem;
+      color: #ffffff;
+      font-family: var(--font-primary);
+      font-size: 0.925rem;
+      transition: var(--transition);
+      outline: none;
+    }
+
+    .form-input::placeholder,
+    .form-textarea::placeholder {
+      color: rgba(148, 163, 184, 0.6);
+    }
+
+    .form-input:focus,
+    .form-select:focus,
+    .form-textarea:focus {
+      border-color: var(--accent-red);
+      background: rgba(255, 255, 255, 0.06);
+      box-shadow: 0 0 0 3px rgba(235, 47, 60, 0.12);
+    }
+
+    .form-input.error,
+    .form-select.error,
+    .form-textarea.error {
+      border-color: #ef4444;
+      box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
+    }
+
+    .form-select {
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+      background-repeat: no-repeat;
+      background-position: right 1rem center;
+      background-size: 1em;
+      padding-right: 2.75rem;
+      cursor: pointer;
+    }
+
+    .form-select option {
+      background: var(--bg-card);
+      color: #ffffff;
+    }
+
+    .form-textarea {
+      resize: vertical;
+      min-height: 110px;
+      font-family: var(--font-primary);
+    }
+
+    .form-error {
+      display: none;
+      font-size: 0.75rem;
+      color: #ef4444;
+      margin-top: 0.35rem;
+      align-items: center;
+      gap: 0.3rem;
+    }
+
+    .form-error.visible { display: flex; }
+
+    /* Checkbox de consentimento */
+    .form-consent {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 1rem 1.15rem;
+      background: rgba(0, 230, 118, 0.05);
+      border: 1px solid rgba(0, 230, 118, 0.2);
+      border-radius: var(--radius-md);
+      margin: 1.25rem 0;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    .form-consent:hover {
+      background: rgba(0, 230, 118, 0.08);
+      border-color: rgba(0, 230, 118, 0.35);
+    }
+
+    .form-consent.error {
+      border-color: #ef4444;
+      background: rgba(239, 68, 68, 0.06);
+    }
+
+    .form-consent input[type="checkbox"] {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 20px;
+      height: 20px;
+      border: 2px solid rgba(148, 163, 184, 0.5);
+      border-radius: 5px;
+      background: transparent;
+      cursor: pointer;
+      flex-shrink: 0;
+      margin-top: 1px;
+      position: relative;
+      transition: var(--transition);
+    }
+
+    .form-consent input[type="checkbox"]:checked {
+      background: var(--accent-green);
+      border-color: var(--accent-green);
+    }
+
+    .form-consent input[type="checkbox"]:checked::after {
+      content: '\f00c';
+      font-family: 'Font Awesome 6 Free';
+      font-weight: 900;
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #07090e;
+      font-size: 0.7rem;
+    }
+
+    .form-consent-text {
+      font-size: 0.825rem;
+      color: var(--text-muted);
+      line-height: 1.55;
+    }
+
+    .form-consent-text strong { color: #ffffff; }
+
+    .form-consent-text a {
+      color: var(--accent-green);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .form-consent-text a:hover { color: #4dffa0; }
+
+    /* Botão de envio */
+    .form-submit-btn {
+      width: 100%;
+      margin-top: 0.5rem;
+      position: relative;
+    }
+
+    .form-submit-btn.loading {
+      pointer-events: none;
+      opacity: 0.75;
+    }
+
+    .form-submit-btn.loading .btn-text { opacity: 0.5; }
+
+    .form-submit-btn .btn-spinner {
+      display: none;
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top-color: #ffffff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    .form-submit-btn.loading .btn-spinner { display: inline-block; }
+    .form-submit-btn.loading .btn-icon { display: none; }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Feedback de sucesso/erro */
+    .form-feedback {
+      display: none;
+      align-items: flex-start;
+      gap: 0.85rem;
+      padding: 1.15rem 1.25rem;
+      border-radius: var(--radius-md);
+      margin-top: 1.25rem;
+      font-size: 0.875rem;
+      line-height: 1.5;
+      animation: slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .form-feedback.visible { display: flex; }
+
+    .form-feedback.success {
+      background: rgba(0, 230, 118, 0.1);
+      border: 1px solid rgba(0, 230, 118, 0.35);
+      color: #4dffa0;
+    }
+
+    .form-feedback.error {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      color: #fca5a5;
+    }
+
+    .form-feedback i { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+
+    .form-feedback strong { color: #ffffff; display: block; margin-bottom: 0.15rem; }
+
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Responsividade dos novos componentes */
+    @media (max-width: 992px) {
+      .contact-grid { grid-template-columns: 1fr; gap: 2.5rem; }
+      .contact-form-card { padding: 2rem; }
+    }
+
+    @media (max-width: 640px) {
+      .cookie-banner { padding: 1.15rem; }
+      .cookie-banner-inner { gap: 1rem; }
+      .cookie-icon-wrap { width: 44px; height: 44px; font-size: 1.15rem; }
+      .cookie-actions { width: 100%; flex-direction: column; }
+      .cookie-btn { width: 100%; text-align: center; }
+      .cookie-pref-actions { flex-direction: column; }
+      .cookie-pref-actions .cookie-btn { width: 100%; }
+
+      .contact-form-card { padding: 1.5rem; }
+      .form-row { grid-template-columns: 1fr; }
+      .contact-trust-badges { flex-direction: column; gap: 0.6rem; }
+
+      .cookie-float-btn { bottom: 1rem; left: 1rem; }
+    }
+
+  </style>
+</head>
+<body>
+
+  <!-- ==========================================================
+       HEADER
+       ========================================================== -->
+  <header class="header">
+    <div class="container nav-wrap">
+      <a href="#" class="brand-logo-link">
+        <img 
+          src="data:image/webp;base64,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" 
+          alt="Alpha Soluções Logo" 
+          class="brand-logo-img"
+        >
+        <div class="brand-logo-text">
+          <span class="brand-title">ALPHA</span>
+          <span class="brand-tagline">Soluções na Internet</span>
+        </div>
+      </a>
+      <div class="nav-cta">
+        <a href="#contato" class="btn btn-primary nav-btn">
+          <span>Solicitar Proposta</span>
+          <i class="fa-solid fa-arrow-right"></i>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==========================================================
+       HERO
+       ========================================================== -->
+  <section class="hero">
+    <div class="container hero-grid">
+      <div class="hero-content">
+        <div class="badge-pill">
+          <i class="fa-solid fa-bolt"></i>
+          <span>Otimização Extrema de Conversão (CRO)</span>
+        </div>
+        <h1 class="hero-headline">
+          Transforme seus cliques caros em <span class="highlight-red">vendas reais e previsíveis.</span>
+        </h1>
+        <p class="hero-subheadline">
+          Criamos Landing Pages de ultra performance projetadas para reter a atenção, eliminar objeções e multiplicar o retorno sobre os seus anúncios no Google e Meta Ads.
+        </p>
+        
+        <div class="hero-cta-group">
+          <a href="#contato" class="btn btn-primary">
+            <span>Quero Uma Landing Page de Alta Conversão</span>
+            <i class="fa-solid fa-fire"></i>
+          </a>
+          <div class="cta-guarantee-note">
+            <i class="fa-solid fa-shield-halved"></i>
+            <span>Entrega ágil em até 5 dias úteis • Copy persuasiva inclusa</span>
+          </div>
+        </div>
+
+        <div class="hero-stats-row">
+          <div class="stat-item">
+            <div class="stat-number">+<span>340</span>%</div>
+            <div class="stat-label">Aumento médio de taxa de conversão</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-number">1.2<span>s</span></div>
+            <div class="stat-label">Velocidade média de carregamento</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-number">+<span>150</span></div>
+            <div class="stat-label">Páginas de sucesso entregues</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-media-wrap">
+        <div class="media-glow"></div>
+        <div class="hero-card">
+          <div class="hero-preview-topbar">
+            <div class="topbar-dots">
+              <span class="dot dot-red"></span>
+              <span class="dot dot-yellow"></span>
+              <span class="dot dot-green"></span>
+            </div>
+            <span class="topbar-title">alphasolucoes.com.br/high-cro-preview</span>
+            <i class="fa-solid fa-lock" style="font-size: 0.75rem; color: #22c55e;"></i>
+          </div>
+          <img 
+            src="https://images.unsplash.com/photo-1460925895917-afdab827c52f?q=80&w=1200&auto=format&fit=crop" 
+            alt="Dashboard de Alta Conversão e Métricas" 
+            class="hero-image"
+          >
+          <div class="hero-floating-badge">
+            <div class="badge-icon-wrap">
+              <i class="fa-solid fa-arrow-trend-up"></i>
+            </div>
+            <div>
+              <div class="badge-text-val">+4.8x ROI em Ads</div>
+              <div class="badge-text-lbl">Média de performance validada</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==========================================================
+       BENEFÍCIOS
+       ========================================================== -->
+  <section class="benefits-section" id="beneficios">
+    <div class="container">
+      <div class="section-title-wrap">
+        <div class="badge-pill">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          <span>O Fim do Desperdício de Tráfego</span>
+        </div>
+        <h2 class="section-title">
+          Por que 92% das empresas <span class="highlight-red">queimam dinheiro</span> em anúncios?
+        </h2>
+        <p class="section-subtitle">
+          Investir em tráfego sem uma página estruturada para conversão é como encher um balde furado. Nós resolvemos os 3 principais gargalos de vendas:
+        </p>
+      </div>
+
+      <div class="benefits-grid">
+        <div class="benefit-card">
+          <div class="benefit-icon-container">
+            <i class="fa-solid fa-gauge-high"></i>
+          </div>
+          <h3 class="benefit-title">Lentidão que Mata Vendas</h3>
+          <p class="benefit-desc">
+            Cada segundo a mais no carregamento custa até 20% das suas vendas. Nossas páginas são programadas com código limpo e carregamento instantâneo no mobile.
+          </p>
+          <div class="benefit-footer-tag">
+            <i class="fa-solid fa-circle-check"></i>
+            <span>Google PageSpeed 90+ Garantido</span>
+          </div>
+        </div>
+
+        <div class="benefit-card">
+          <div class="benefit-icon-container">
+            <i class="fa-solid fa-bullseye"></i>
+          </div>
+          <h3 class="benefit-title">Copywriting Sem Foco</h3>
+          <p class="benefit-desc">
+            Textos genéricos e páginas confusas afastam seu prospect em 3 segundos. Escrevemos narrativas persuasivas que tocam na dor exata do seu cliente ideal.
+          </p>
+          <div class="benefit-footer-tag">
+            <i class="fa-solid fa-circle-check"></i>
+            <span>Engenharia de Atenção & Persuasão</span>
+          </div>
+        </div>
+
+        <div class="benefit-card">
+          <div class="benefit-icon-container">
+            <i class="fa-solid fa-chart-line"></i>
+          </div>
+          <h3 class="benefit-title">Falta de Rastreamento & CRO</h3>
+          <p class="benefit-desc">
+            Você não sabe onde os visitantes travam ou abandonam? Entregamos a página com Pixel, API de Conversões do Meta e Google Analytics configurados para escala.
+          </p>
+          <div class="benefit-footer-tag">
+            <i class="fa-solid fa-circle-check"></i>
+            <span>Métricas Prontas para Escala</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==========================================================
+       PRODUTO / OBJEÇÕES
+       ========================================================== -->
+  <section class="product-section" id="servico">
+    <div class="container product-grid">
+      <div class="product-details">
+        <div class="badge-pill">
+          <i class="fa-solid fa-code"></i>
+          <span>Metodologia Alpha</span>
+        </div>
+        <h3>Engenharia Digital Desenvolvida para Vender</h3>
+        <p>
+          Não construímos apenas layouts bonitos. Aliamos design premium, neurodesign de conversão e arquitetura técnica robusta para transformar tráfego frio em reuniões agendadas e vendas no checkout.
+        </p>
+
+        <ul class="features-checklist">
+          <li>
+            <i class="fa-solid fa-check"></i>
+            <span><strong>Design Exclusivo:</strong> Sem templates engessados de ferramentas lentas. Layout sob medida para sua marca.</span>
+          </li>
+          <li>
+            <i class="fa-solid fa-check"></i>
+            <span><strong>Integração com WhatsApp & CRM:</strong> Notificação imediata para seu time comercial fechar enquanto o lead está quente.</span>
+          </li>
+          <li>
+            <i class="fa-solid fa-check"></i>
+            <span><strong>Mobile First Absoluto:</strong> Mais de 85% do seu tráfego virá do celular. A experiência mobile é cirúrgica.</span>
+          </li>
+          <li>
+            <i class="fa-solid fa-check"></i>
+            <span><strong>Copywriting Orientado a Ação:</strong> Headings, bullets e CTAs elaborados para eliminar qualquer atrito de decisão.</span>
+          </li>
+        </ul>
+
+        <a href="#contato" class="btn btn-secondary">
+          <span>Ver Planos e Prazos</span>
+          <i class="fa-solid fa-chevron-right"></i>
+        </a>
+      </div>
+
+      <div class="objections-box">
+        <div class="objections-header">
+          <i class="fa-solid fa-circle-question"></i>
+          <span>Dúvidas Frequentes & Garantias</span>
+        </div>
+
+        <div class="objection-item">
+          <div class="objection-question">
+            <i class="fa-solid fa-angle-right"></i>
+            <span>Já tenho um site institucional, preciso de uma Landing Page?</span>
+          </div>
+          <div class="objection-answer">
+            Sim! Sites institucionais têm menus dispersos e baixa conversão para tráfego pago. Uma landing page possui foco único: transformar o clique em lead ou venda direta.
+          </div>
+        </div>
+
+        <div class="objection-item">
+          <div class="objection-question">
+            <i class="fa-solid fa-angle-right"></i>
+            <span>Em quanto tempo minha página fica no ar?</span>
+          </div>
+          <div class="objection-answer">
+            Nosso prazo médio de entrega completa (design, copy e desenvolvimento) é de 5 a 7 dias úteis após o alinhamento das informações.
+          </div>
+        </div>
+
+        <div class="objection-item">
+          <div class="objection-question">
+            <i class="fa-solid fa-angle-right"></i>
+            <span>E se eu precisar alterar textos ou botões depois?</span>
+          </div>
+          <div class="objection-answer">
+            Entregamos o projeto 100% documentado e fornecemos suporte prioritário por 30 dias para qualquer ajuste fino necessário.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==========================================================
+       DEPOIMENTOS
+       ========================================================== -->
+  <section class="testimonials-section" id="depoimentos">
+    <div class="container">
+      <div class="section-title-wrap">
+        <div class="badge-pill">
+          <i class="fa-solid fa-star"></i>
+          <span>Resultados Reais</span>
+        </div>
+        <h2 class="section-title">
+          Quem contratou a <span class="highlight-red">Alpha Soluções</span> multiplicou os resultados
+        </h2>
+        <p class="section-subtitle">
+          Veja o feedback de empresários e gestores de tráfego que escalaram suas campanhas com nossas páginas.
+        </p>
+      </div>
+
+      <div class="testimonials-grid">
+        <div class="testimonial-card">
+          <div class="stars-wrap">
+            <i class="fa-solid fa-star"></i>
+            <i class="fa-solid fa-star"></i>
+            <i class="fa-solid fa-star"></i>
+            <i class="fa-solid fa-star"></i>
+            <i class="fa-solid fa-star"></i>
+          </div>
+          <p class="testimonial-quote">
+            "Estávamos pagando R$ 42 por lead no Meta Ads com a página antiga. Depois que a Alpha refez nossa Landing Page com foco em CRO, nosso custo despencou para R$ 13 por lead qualificado."
+          </p>
+          <div class="client-profile">
+            <img 
+              src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop" 
+              alt="Mariana Siqueira" 
+              class="client-avatar"
+            >
+            <div>
+              <div class="client-name">Mariana Siqueira</div>
+              <div class="client-role">Diretora de Marketing • EdTech</div>
+              <span class="metric-badge">-69% no Custo por Lead</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="testimonial-card">
+          <div class="stars-wrap">
+            <i class="fa-solid fa-star"></i>
+            <i class="fa-solid fa-star"></i>
+            <i class="fa-solid fa-star"></i>
+            <i class="fa-solid fa-star"></i>
+            <i class="fa-solid fa-star"></i>
+          </div>
+          <p class="testimonial-quote">
+            "A velocidade de carregamento e o design limpo impressionaram nossos clientes. Conseguimos fechar 3 contratos de alto ticket já na primeira semana de lançamento da página nova."
+          </p>
+          <div class="client-profile">
+            <img 
+              src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=200&auto=format&fit=crop" 
+              alt="Rodrigo Meirelles" 
+              class="client-avatar"
+            >
+            <div>
+              <div class="client-name">Rodrigo Meirelles</div>
+              <div class="client-role">Fundador • Consultoria B2B</div>
+              <span class="metric-badge">+R$ 180k em Pipeline</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="testimonial-card">
+          <div class="stars-wrap">
+            <i class="fa-solid fa-star"></i>
+            <i class="fa-solid fa-star"></i>
+            <i class="fa-solid fa-star"></i>
+            <i class="fa-solid fa-star"></i>
+            <i class="fa-solid fa-star"></i>
+          </div>
+          <p class="testimonial-quote">
+            "Trabalho impecável na copy e no código. Sem gambiarras do WordPress, super leve e totalmente configurada com nosso CRM. O investimento se pagou nos primeiros 3 dias."
+          </p>
+          <div class="client-profile">
+            <img 
+              src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=200&auto=format&fit=crop" 
+              alt="Carlos Eduardo Fagundes" 
+              class="client-avatar"
+            >
+            <div>
+              <div class="client-name">Carlos Eduardo</div>
+              <div class="client-role">Head de Performance • E-commerce</div>
+              <span class="metric-badge">Taxa de Conversão: 8.4%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+  <!-- ==========================================================
+       SEÇÃO DE CONTATO COM FORMULÁRIO E CONSENTIMENTO LGPD
+       ========================================================== -->
+  <section class="contact-section" id="formulario">
+    <div class="container">
+      <div class="contact-grid">
+        <!-- Coluna de Informações -->
+        <div class="contact-info">
+          <div class="badge-pill">
+            <i class="fa-solid fa-paper-plane"></i>
+            <span>Solicite Sua Proposta</span>
+          </div>
+          <h3>Vamos construir sua <span class="highlight-red">máquina de vendas</span> juntos</h3>
+          <p>
+            Preencha o formulário ao lado e receba em até 24h um diagnóstico personalizado + proposta com escopo, prazo e investimento para sua nova Landing Page de alta conversão.
+          </p>
+
+          <ul class="contact-benefits">
+            <li>
+              <i class="fa-solid fa-circle-check"></i>
+              <span><strong>Diagnóstico gratuito:</strong> analisamos sua página atual e apontamos os gargalos de conversão.</span>
+            </li>
+            <li>
+              <i class="fa-solid fa-circle-check"></i>
+              <span><strong>Proposta sob medida:</strong> escopo, prazo e investimento alinhados ao seu objetivo.</span>
+            </li>
+            <li>
+              <i class="fa-solid fa-circle-check"></i>
+              <span><strong>Sem compromisso:</strong> você decide se quer avançar após receber a proposta.</span>
+            </li>
+            <li>
+              <i class="fa-solid fa-circle-check"></i>
+              <span><strong>Atendimento humano:</strong> você fala direto com um estrategista sênior, sem robôs.</span>
+            </li>
+          </ul>
+
+          <div class="contact-trust-badges">
+            <div class="trust-badge">
+              <i class="fa-solid fa-lock"></i>
+              <span>Dados protegidos por SSL</span>
+            </div>
+            <div class="trust-badge">
+              <i class="fa-solid fa-shield-halved"></i>
+              <span>Conformidade LGPD</span>
+            </div>
+            <div class="trust-badge">
+              <i class="fa-solid fa-clock"></i>
+              <span>Resposta em até 24h</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Coluna do Formulário -->
+        <div class="contact-form-card">
+          <h4 class="form-title">Solicite sua Proposta</h4>
+          <p class="form-subtitle">Todos os campos marcados com <span style="color: var(--accent-red);">*</span> são obrigatórios.</p>
+
+          <form id="contact-form" novalidate>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="nome">Nome completo <span class="required">*</span></label>
+                <input 
+                  type="text" 
+                  id="nome" 
+                  name="nome" 
+                  class="form-input" 
+                  placeholder="Seu nome"
+                  autocomplete="name"
+                  required
+                >
+                <div class="form-error" data-error-for="nome">
+                  <i class="fa-solid fa-circle-exclamation"></i>
+                  <span>Por favor, informe seu nome.</span>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="email">E-mail profissional <span class="required">*</span></label>
+                <input 
+                  type="email" 
+                  id="email" 
+                  name="email" 
+                  class="form-input" 
+                  placeholder="voce@empresa.com.br"
+                  autocomplete="email"
+                  required
+                >
+                <div class="form-error" data-error-for="email">
+                  <i class="fa-solid fa-circle-exclamation"></i>
+                  <span>Informe um e-mail válido.</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="whatsapp">WhatsApp <span class="required">*</span></label>
+                <input 
+                  type="tel" 
+                  id="whatsapp" 
+                  name="whatsapp" 
+                  class="form-input" 
+                  placeholder="(11) 99999-9999"
+                  autocomplete="tel"
+                  required
+                >
+                <div class="form-error" data-error-for="whatsapp">
+                  <i class="fa-solid fa-circle-exclamation"></i>
+                  <span>Informe um WhatsApp válido com DDD.</span>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="empresa">Empresa / Site</label>
+                <input 
+                  type="text" 
+                  id="empresa" 
+                  name="empresa" 
+                  class="form-input" 
+                  placeholder="Nome da empresa ou site"
+                  autocomplete="organization"
+                >
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="investimento">Investimento mensal em anúncios <span class="required">*</span></label>
+              <select id="investimento" name="investimento" class="form-select" required>
+                <option value="">Selecione uma opção</option>
+                <option value="Ainda não invisto">Ainda não invisto em anúncios</option>
+                <option value="Até R$ 1.000/mês">Até R$ 1.000/mês</option>
+                <option value="R$ 1.000 a R$ 5.000/mês">R$ 1.000 a R$ 5.000/mês</option>
+                <option value="R$ 5.000 a R$ 20.000/mês">R$ 5.000 a R$ 20.000/mês</option>
+                <option value="Acima de R$ 20.000/mês">Acima de R$ 20.000/mês</option>
+              </select>
+              <div class="form-error" data-error-for="investimento">
+                <i class="fa-solid fa-circle-exclamation"></i>
+                <span>Selecione uma faixa de investimento.</span>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="mensagem">Conte sobre seu projeto</label>
+              <textarea 
+                id="mensagem" 
+                name="mensagem" 
+                class="form-textarea" 
+                placeholder="Ex: Preciso de uma landing page para captar leads de um curso online. Hoje uso WordPress e a página é lenta..."
+              ></textarea>
+            </div>
+
+            <!-- Checkbox de Consentimento LGPD -->
+            <label class="form-consent" for="consentimento">
+              <input type="checkbox" id="consentimento" name="consentimento" required>
+              <span class="form-consent-text">
+                <strong>Autorizo o tratamento dos meus dados pessoais</strong> pela Alpha Soluções, conforme a <a data-modal="privacidade">Política de Privacidade</a> e a <a data-modal="lgpd">LGPD (Lei nº 13.709/2018)</a>, para fins de contato comercial, elaboração de proposta e envio de comunicações. Posso revogar este consentimento a qualquer momento. <span style="color: var(--accent-red);">*</span>
+              </span>
+            </label>
+            <div class="form-error" data-error-for="consentimento" style="margin-top: -0.5rem; margin-bottom: 1rem;">
+              <i class="fa-solid fa-circle-exclamation"></i>
+              <span>É necessário aceitar os termos para enviar o formulário.</span>
+            </div>
+
+            <button type="submit" class="btn btn-primary form-submit-btn" id="submit-btn">
+              <span class="btn-spinner"></span>
+              <span class="btn-text">Enviar Solicitação</span>
+              <i class="fa-solid fa-paper-plane btn-icon"></i>
+            </button>
+  <!-- ==========================================================
+       BANNER DE COOKIES LGPD
+       ========================================================== -->
+  <div class="cookie-banner" id="cookie-banner" role="dialog" aria-live="polite" aria-label="Aviso de Cookies">
+    <div class="cookie-banner-inner">
+      <div class="cookie-icon-wrap">
+        <i class="fa-solid fa-cookie-bite"></i>
+      </div>
+      <div class="cookie-text-wrap">
+        <div class="cookie-title">
+          <i class="fa-solid fa-shield-halved"></i>
+          <span>Sua privacidade é importante</span>
+        </div>
+        <p class="cookie-desc">
+          Utilizamos cookies para melhorar sua experiência, analisar o tráfego e personalizar anúncios. Ao clicar em <strong style="color: #ffffff;">"Aceitar Todos"</strong>, você concorda com nossa <a data-modal="privacidade">Política de Privacidade</a> e o uso de cookies conforme a LGPD.
+        </p>
+      </div>
+      <div class="cookie-actions">
+        <button class="cookie-btn cookie-btn-customize" id="cookie-customize">
+          <i class="fa-solid fa-sliders"></i>
+          Personalizar
+        </button>
+        <button class="cookie-btn cookie-btn-reject" id="cookie-reject">
+          Recusar
+        </button>
+        <button class="cookie-btn cookie-btn-accept" id="cookie-accept">
+          <i class="fa-solid fa-check"></i>
+          Aceitar Todos
+        </button>
+      </div>
+    </div>
+
+    <!-- Painel de Personalização -->
+    <div class="cookie-preferences" id="cookie-preferences">
+      <div class="cookie-pref-header">
+        <i class="fa-solid fa-sliders" style="color: var(--accent-red); margin-right: 0.5rem;"></i>
+        Personalize suas preferências de cookies
+      </div>
+
+      <div class="cookie-pref-list">
+        <!-- Essenciais -->
+        <div class="cookie-pref-item">
+          <div class="cookie-pref-info">
+            <div class="cookie-pref-title">
+              <i class="fa-solid fa-lock"></i>
+              <span>Cookies Essenciais</span>
+              <span class="badge-essential">Sempre ativos</span>
+            </div>
+            <p class="cookie-pref-desc">
+              Necessários para o funcionamento básico do site (segurança, navegação, formulários). Não podem ser desativados.
+            </p>
+          </div>
+          <label class="cookie-toggle">
+            <input type="checkbox" checked disabled>
+            <span class="cookie-toggle-slider"></span>
+          </label>
+        </div>
+
+        <!-- Analytics -->
+        <div class="cookie-pref-item">
+          <div class="cookie-pref-info">
+            <div class="cookie-pref-title">
+              <i class="fa-solid fa-chart-line"></i>
+              <span>Cookies de Análise</span>
+            </div>
+            <p class="cookie-pref-desc">
+              Utilizamos Google Analytics 4 para entender como você navega no site e melhorar a experiência. Os dados são anonimizados.
+            </p>
+          </div>
+          <label class="cookie-toggle">
+            <input type="checkbox" id="cookie-analytics" checked>
+            <span class="cookie-toggle-slider"></span>
+          </label>
+        </div>
+
+        <!-- Marketing -->
+        <div class="cookie-pref-item">
+          <div class="cookie-pref-info">
+            <div class="cookie-pref-title">
+              <i class="fa-solid fa-bullseye"></i>
+              <span>Cookies de Marketing</span>
+            </div>
+            <p class="cookie-pref-desc">
+              Utilizamos Meta Pixel e Google Ads para mensurar conversões e exibir anúncios personalizados em outras plataformas.
+            </p>
+          </div>
+          <label class="cookie-toggle">
+            <input type="checkbox" id="cookie-marketing" checked>
+            <span class="cookie-toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="cookie-pref-actions">
+        <button class="cookie-btn cookie-btn-reject" id="cookie-pref-reject">
+          Recusar Todos
+        </button>
+        <button class="cookie-btn cookie-btn-accept" id="cookie-pref-save">
+          <i class="fa-solid fa-check"></i>
+          Salvar Preferências
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Botão flutuante de cookies (reabrir preferências) -->
+  <button class="cookie-float-btn" id="cookie-float-btn" aria-label="Reabrir preferências de cookies" title="Preferências de Cookies">
+    <i class="fa-solid fa-cookie-bite"></i>
+  </button>
+            <!-- Feedback -->
+            <div class="form-feedback" id="form-feedback" role="alert" aria-live="polite"></div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </section>
+  <!-- ==========================================================
+       CTA FINAL
+       ========================================================== -->
+  <section class="final-cta-section" id="cta-final">
+    <div class="container">
+      <div class="cta-card">
+        <div class="cta-card-content">
+          <div class="badge-pill">
+            <i class="fa-solid fa-calendar-check"></i>
+            <span>Vagas Limitadas Para Este Mês</span>
+          </div>
+          <h2 class="cta-heading">
+            Pronto para parar de perder vendas e <span class="highlight-red">dominar seu mercado?</span>
+          </h2>
+          <p class="cta-subtext">
+            Converse agora diretamente com nosso estrategista sênior. Faremos um diagnóstico rápido do seu posicionamento e traçaremos o plano para sua nova página.
+          </p>
+
+          <div class="cta-button-container">
+            <a href="https://wa.me/5569992684476?text=Olá!%20Gostaria%20de%20solicitar%20uma%20Landing%20Page%20com%20a%20Alpha%20Soluções." target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="font-size: 1.15rem; padding: 1.15rem 2.5rem;">
+  <i class="fa-brands fa-whatsapp" style="font-size: 1.4rem;"></i>
+  <span>Falar no WhatsApp com o Consultor</span>
+</a>
+            <div class="cta-guarantee-note">
+              <i class="fa-solid fa-clock"></i>
+              <span>Resposta média em menos de 15 minutos em horário comercial</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==========================================================
+       FOOTER
+       ========================================================== -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand-info">
+          <a href="#" class="brand-logo-link">
+            <img 
+              src="data:image/webp;base64,UklGRvITAABXRUJQVlA4IOYTAACwWgCdASosASwBPm02l0kkIyIhIhTpmIANiWdu4XCBCCE662cnlQc/dcPxejHzAOcz5gPOL/2vqq/sfqAfsZ1nnoF+XR7In9y/6/paZjH26f4D8rfRPxxesvcHnJxJvkP22/R/3jit9X/qBflP9A/WrgwQB/W/vytUrvZ/1fcA/kv9X/43rB/wvDY9J9gb+Y/4D9mPYM+pvPv9U+wb+v3pzewj0Yv2qFto/s4qDq18v7OKg6tkaWx/ZxUHVr5O2tMWSFdG8qrZVElVU2pKhY8mD5+vkzov0Q7dfzHamWXAbzqCif/V6qsl+7dlpCusRCLMCZ0X6IieQ1BOMFDtcc5jOJFNf6oC0PxKIxNVxZFFbR/ZxVFELwVXgeHheYU7alGIYj2Fkbren40bXNOf5nfuzov0P9Cj/yEy4aKjuEL1llvsF8umasGgkB2HbfZ3XgABTINO07QdWvmEihnzBOF5UawWXqlvGyj/Mq+Wzf2Yo9066ocXSyNYcWcVB1bkAfOLmuCJX+XjJBMUUPIYPnZ2lB1a+VELguQxU5Od451OaIJ7vEMRRaDeG6fcMrpZy/s4pXp2RsfH3fmzjIaYSSyTmT8KK4Yewcn05n1CXY+amhFm4GR0JXAxeoVPmC1nVr2RCZ4pHQQH/jckluy9g7IRUSZk1V/v9tGuaAYtt/oM9bKMPdqd5Vy+Dk6mBiUZnEwED+55aOlpw13yW7Oi6Q8Zz/eT3qN3bJyq1JKFkldjU8vzf4w9AdpPQrqwps/dkIi5UlGwcvlUKeaKKr3ZS6LOKf4HRdqFEdew0ddzcm8WPL/pSemu+aIWH1sv4f6QlUyLdaobLti1Cgnozquytm6XDgeO6kRag+88xGCeJK6poo890JCRsdgir23U0uXMohxzAOPqZJkraP7OKRgnrHv1Cryd+draWo9TioOrXyh1Fxm2kKLfr3eaDTUBNAsRkIVU5nRfoiLY/tJAU6tesAD+/04EAMZHUoMM6oKQwNrTqKq1p0SZD9phen6sxA6aJMCkXH8mypZ64hMuXVb/Sdi3ZYhf91odZo/dvrrTKQS/mayFq0J5Eab2G/azp+3y4guY4mx7/X3BQUKDAgSdgGKseiwU0edE+N0cCsQezYCo0ACz45alKoKyjuATmE4bKlGJOz0hf5TCwri4R7BCo/gv20UQv+HTvzV3fbZiuGLe2oTzVpRdud4wMHpZYSa6MqLJpxUeroTEX2/Df0ZJC0Jxux7OB9X6vIo+DzT9eV5XScdUZojlt0Ntcm+9D0Pj4+qg5Pqdx6nr4thdFKma6RXAzeZSJ9VOGn+9Dbz4bPgD5lGZVYjzteR0jhqqPts4nGmFBBgctCFNGPSm35xxtdP6a306UWgxt8IC0WWWBnSjUaeQx/05QjT26Qsf33rZO5pcLV0QmUzcoTJMHk55yCy5Q6PvbH6M6ZuTJ+1iogqXIboS7l1hJ92IyeN6uszmxniO4/koniz1UXX6hZM6jZodyN9Dv6t72varGBYUhZgSy7jtauD5YwNe9lRka8wMaZLW6EFYv7F9AzapxTgVJ67WPY7H+QXJx4TjvN0NqzNtnS3p+VxwfoN8kaOzbOAnmb6qSGohq4TFT/081ouYVmaFWYfbGqXJ+1n8Lxph0Y8p4v8X0hxzm48Asf1wnPltJaOOOxz1GJsmc45FxSfpKBtardxBABj23HU7RbOEgvwQ2EZ5sgtYy6uqwO7nww+w/rYxpu9p1xVwoOOPhaUudwTkFpl/M+In8bkyI0k+13+l6cPO0hmsrJ+O//KUmz3M+FoBK9PqlGH+2n+z3dh6tMiWn0GvrW6if1J3tWz1Jb4p49DEKdMXz6129pAyQWHZTjWqVhBrf26RheGl9CsY+2+LGplvaVNMRFyXv+a0wy8lbIuU6uC0Ddr1Y1hqIVcV1WgOTToUhzNQ4IFEI3y8MdCiQi5lJ5i/MWnGd0V+lxLFs6As3H2Z5HKmvHT8jDgXlhh7CUx7ckGlxhiQJLTw8PiKGrmrbR4v8zDuirqOIBg3UOQTklcnRbIZ08n9MATmmySoI7y7adOH/lnyRs5yblDW11L7sEMlZElen7YywnHNrQYqF735EA1t+rIY3vKm1O7XAgaKgIXFZhpg1uCZG189C1Wf5dkQPQ2pyIx3pJtIsUuKdGkxi004UwIueu7qM22a4nFWgZXkhdXTapw98NjWH/vN621i/cjnZYIN/qGlNEoXqpHs4PakLsB7uawxGBNHulbRr/yAGabZNhjepqjIMIbCu6bF8yWYzzp5Q9/x7SWwsWIGQWmNe1wMzSe2VfkNKi+HSMdWfnw3qEhUsARkFfqj7WuhLuYWV+XqhTW+oFfxmuDzHrqimJ4iY61FzvnOv7BThLhoxE3ZSCBlfcLp6ZQZZ2JxRIo7i2lQh2ufyOeTi47C9j4aAoJQYTxMeQiawxZ1bHX3B3dfKfN9CeUt1lHgeZxCUzocVpYFdHczJnOP3I/BftrHVwjk8WGEHXy0ZUL5ucPAtdTrTE6mWdhO2OLp79hb3iXA5ZJQh3yE3T27atRxXeCm2S+t1URPg5FzKiPelXRx8NGOdMZijCCUFD69vrE/hzjAuRpWppiLnddy5dJM88mY9bsCOdsBUdbyNCkOKPcXppHw1CPkfLdT94ZGwOlTo3HdrcxYzjm2qajJpIh4w2IGDN2VQDUVQrWyUFjjoj2AkmluWIjxREi5x1etrAuwCMbQWl6d9zxgDk2KscvV6OUZXM4+UA4Jc3Xf64f+BgnDl2JYtqew3L7UB++2y/WdkXjRTHDTYxBOAHvBDz73gRtOmLZVObaUgmPYCBTWiOqaaPwFGyUtKaZiavFCaphOdfF+1ZEzInRlIoOZDJJrzg1MP+cBUL3PowZy0PRB7wKbRLstbHW+qOtn/TyxjAczok2h6o7mKWI7O07lBU9rTja4XJte6B+rAiz2mFgRqQ0D002DLIvPKSQw532Eqcyi3EUkCwTnVufc86rLCLhBoUlyCCMHx/BwL3+qROMkLjgsPoisVv9IgydIGbWf9rJ2hDUFDWySsT+UtfiQ6IovdQKQ/NG5rMoUGJS1ry+p2WmG2KYmDv5oWAueSi9EoMOVyxPcAyBbAADNFXEO0I6aYMEwhuIWHBaDDrY4jBkDR917KX+FIFmjdtxCG19CqGNyts4kenULWWVtWrcpYwOmYFaulYuyztii/R+DsW0K3RJN9MV5kOFcxNccUhtOTC2WfYQ6PjOPi1fAHBtsLI13HAWkxpVXUe4isWbBWhh/aQkn2r71+xuuWGY76v+1kLhGyN8wk/GRLLZMYFf/y0zx8/sulw7jWxviEhoQA+tzeqKaqv6UuIuOD3t44y/BhqxnNV78JmIQbT7pPme1sMZoHr3G27NrVnORYD0zaKvjs0nqXJCRXU7jtq5p89vObAhbRX5teOQGfi8XisJGBxl0dXicJFD8SsmBeo5/vCZEcoqmaQy7jpM653br7/6XWV6cjlTiSU25t84rrrDpGI5uWcLtoMKq3vCyt0Pd2wNP6PnRJ+wsZ/QEoMSiwr6utklXc98W7e9Ridc65RWwjydWXfo7iilOAMcfP77RXdM1+hLhZoS8XzccNnmTWstoLp0s65xXxitWW9ZrF0Tv/BRiSAGGckFbvjipY37gV3iyuQPlYB+zIc9zUA+NDyfTwwYKjtkT63QTgwrF4kc07c6sfZ3aauJNr39KmF6zp4FaVSfyJ3mpGBxiKZZ2Hub6u4h6V+ihCdhwqWrTQDigzFH+ExaTWVoxfQ72ufnICm2iVhTs/iijwD5OhDmghY8VUiMjs8FtZqo//aeWJ4/VQ/1rP5OPyZizLaA9OEG3YfOize3GHrBPKtkeoUhdMcaA+bldr/r45Q3W2/ry6u8pCVLR9CupdvC8p1Pvd5bPbboVo4VyRETORJjiJHQzMTqb4aH0zC0dLMDUbAWHNG2iJIdkPW/DcTq8NDcbDsWZSvq9A1NCATYEC0u5e0SmgnvnS9gVDvzxoVFDjbTxMbRU7vxYBgj5cc+v3pKTdwo4133hx6oA9pyitEkZcpgDeFHvijC8Qnpn3tODssC68AUaVE9Tfu1fIfLuIoco826RJBUc1Qjzv2a+DanJbukd1Gy6oMCeXJpgF7GRnf89tUNTo/htcS8DTztzOm5EQwRRqGZaWOmIkfqghXCdycRcIClBlGDptCpkqltJTyTs+Mpm/7wVrUNDzP+yinWLmShqlxZBJ8c2zn1mHc4RQQ1C2H9fUSShazdpVxorlXXCPimOTf+rWgFF4h2TSozG2U4u0yP6JOyr5qMhfWLHz4ws+odLRNep/OQhJcCfoCrAGcXE+qcK2yf+3KFwwjqNq5/Lu5wBS7qA6tfCGB/WY0w54krrByqMmfcKI8LAFf5QNBNBzDeEowm+/D5AVSslO/kU9HM4+ssfVP6PI/SwGJNYf3MQoBrky8Ec1puMCY2rkntng/ew0Csw6BkawtXhbQ9yVYYlsIV3+vr7TeriTVk0F2ISlj3t7BAux93VfO74A6OTAhS0cGHpNgdQdOtWadVO9Hxd34Vv1BeaLceph7N5q2Otcf3aSJkthEBuM+Cu0gw/dHbmheoVZNNAv5nGeexSFYchg4osWuq+eTi5tbSzVhMN6db3hhFhixLaCukGhMCWC8d0JUovzqg0NrZBNiSBa/FKBRvvsD9ea7wPAEzuL+iRB6HTKJF6EbXOdlq6WHVs92RyYV2WrX28TgejMrNlYhiolkN4XAHt/XASifQFqL0etoYz+t8Pgx6DOkeTEpp0Q46CfalYbvepJ9OKj3LRBbKt0CQNVOnhkI3SqS0r5ToHRY5ffyYmgpjIBmHw9nhXDL2JOtWC98DagL6uTYsLRL69hq51WwMRu4tnw1VxS8CGBEjn5AGsjSI9kbAVNKiDfEPmdxPOMobP6IifIXG7mfvLlxA0852tb6YkjjWPjm8x03209FGQReW7IGfZatyRnBYFjOm+XCu6MzEl97Q/a/gXHrkOIWaIBRCY4aXhU1SJEJjblY8PtJERl7HHeMl/S9moiaMfsh9xjLDUCsB8VRTeyC8dc26RNlHhqS16qqwzZfmetWlfzC7OYHVQ72HOlaS5vviibWTNUBTJkW+X4WEz0gVvmbLmYWUOUdac8SyuTaSqLLl2amtR2egaetDxyHTCmkVbvx2LT18HIiZ57Mt3TMtMaeIORZpsnCPfIKa6/eoMojBWfEBk6TxGSAPSNmfGEcTDOkDAKkLRApHtKUeoukR/96OzvHMAx0kb0pk+Iw1Q4+9o3I5pOse5c0nG65sq69twUkP/2kYdcKVs+N0XBUwQer4djpshxMTOlvU8qdz87WU25rs9XXSBMTkxcy8/tfP/TzyhNNTX8QsXyHQhNFMJL1+EcSOgup7uy1DL++cSxUk4SQZfhXMzSavVxv2bJdDBd0wWzujWOgJ9u8dFNn0zQctF5r4nsDR5EVSLRwR7bQq5ZckpfXBgotMb0EC9graj+PjtwK0YoCq622N/XZlGg20tfk9KJuo464txUakcUNBoz0PR1JoC5qekwccJ52dgsgP9jG64325s2+G1G0Wqz4GPNAQM1czKErYfS6XOfTVyg5XVIEPRj/zHsf/spivVktgTkSMW444LeZAcxON9hfW0zZljhRPm+c9Bpl0rrtllP+seV7d/mHN7FaMInRNCOXzE4OCGQCGpqnbt8LYw2oD0p8n1L1kQcvYo8IJfk348XI4vVvBl7OsB3h7/6L1W9uEUr09mVxeGGUehFWzDfgQ9z654rKd9wL89/IsGlvK3RZb0Xu5esPrRA8av/0hOotO+0UDBljKmsdirz0tTb6YF6u47nBSaRfGbbjZB5bvxH8IozcEr7SDoyZSdOuaCH4GdvGW0brMKLEbyMYFAGmTyEsdg8pLxDAwpwvu/CKmzO7/K5Q4Su1O3VhGtD9fysv3tcrLTshwAmYj2B0jV+srne0SYVIT7tGJef8IndxYocZ43sYZ7M0IVlNG1UHaxVrgEDHjT+YuLwrlPz3yR+xv9pWWCbSLB1MhO0t4Rjze/aP8j6JZK4AFUFLQ4uyZ+mRkVHSIezCz/BKgMh00c9HRVUp74HKFev+YwpEwKms88ARIOatMcBTDo2PJDxmTAaE4hmkNFFM6wMybTNghU95mAW8qOxih7bvxhNMcvdAukCaTIIzFVVxhE9pmy0wNLgKq9JgGBbKMOA4P1KuDcPvJ1OGg5YsA+e7UZXpDnSqJOyewsE1ZunsjdJGlcBojwjC0PMGM95ggIakcLo9Il+SmQxoUTHDJyShzVaWNWJYup+i8GX7jStyv+pzi50IQKeL94b5m3rtBwd/VemQBiVRh+dwB1UeBo7cAnzBvJ4oOtDSuCXaHozk+1tXa9PXiIm6asHvYdPX6VqcuHu2ield6D3WjnIUUZu1/n3DIB+EZFr/Pdchd+BK9Px35u0Xhvb28d47KZrY1SXSP+A08f5uao05Lw3ikSp+3HW6XrCWc24ayNibwEig/pZTUIa0XV+c3Guez6reMffp9+Pgxl9B2TGVmt0mpud/tG9yAJgCzyDCgrEhWrSkTkWqBf6eGFoBKc29doHfkFqTZBdn/Vj7BjqY+zlNeYifNBHTRy/ib1INlqI0yLoJi8mTjfKmsvyv1wcZ8SMejV0EBfkHP7BRy7oTHDH+B0Kd1G08nB3TepH0yZHZMazT2oXbyXu5mJOEmr2HqkePBkFYnuauSUrc2DzsMVOKVL650e4J+kYCNTlqaRoa9vTL8lXMa2SKWu5g/7lH3824A1oAAAAAA=" 
+              alt="Alpha Soluções" 
+              class="brand-logo-img"
+            >
+            <div class="brand-logo-text">
+              <span class="brand-title">ALPHA</span>
+              <span class="brand-tagline">Soluções na Internet</span>
+            </div>
+          </a>
+          <p>
+            Especialistas em desenvolvimento de páginas focadas em vendas, taxa de conversão e arquitetura de autoridade digital.
+          </p>
+          <div class="footer-social-links">
+            <a href="#" class="social-btn" aria-label="Instagram"><i class="fa-brands fa-instagram"></i></a>
+            <a href="#" class="social-btn" aria-label="LinkedIn"><i class="fa-brands fa-linkedin-in"></i></a>
+            <a href="#" class="social-btn" aria-label="YouTube"><i class="fa-brands fa-youtube"></i></a>
+          </div>
+        </div>
+
+        <div>
+          <h4 class="footer-col-title">Soluções</h4>
+          <ul class="footer-links-list">
+            <li><a href="#servico">Landing Pages de Venda</a></li>
+            <li><a href="#servico">Páginas de Captura de Leads</a></li>
+            <li><a href="#servico">Otimização de CRO</a></li>
+            <li><a href="#servico">Consultoria de Tráfego</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 class="footer-col-title">Institucional</h4>
+          <ul class="footer-links-list">
+            <li><a href="#beneficios">Sobre Nós</a></li>
+            <li><a href="#depoimentos">Estudos de Caso</a></li>
+            <li><a href="#contato">Fale Conosco</a></li>
+            <li><a href="#">Trabalhe Conosco</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 class="footer-col-title">Legal & Privacidade</h4>
+          <ul class="footer-links-list">
+            <!-- Links atualizados para abrir os modais -->
+            <li><a data-modal="termos">Termos de Uso</a></li>
+            <li><a data-modal="privacidade">Políticas de Privacidade</a></li>
+            <li><a data-modal="seguranca">Segurança da Informação</a></li>
+            <li><a data-modal="lgpd">LGPD Compliance</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <div>
+          &copy; 2026 Alpha Soluções - Consultor de Soluções na Internet. Todos os direitos reservados.
+        </div>
+        <div>
+          Estratégia • Tecnologia • Resultados
+        </div>
+      </div>
+    </div>
+  </footer>
+
+
+  <!-- ==========================================================
+       MODAL: TERMOS DE USO
+       ========================================================== -->
+  <div class="modal-overlay" id="modal-termos" role="dialog" aria-modal="true" aria-labelledby="modal-termos-title">
+    <div class="modal-container">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <div class="modal-icon"><i class="fa-solid fa-file-contract"></i></div>
+          <div>
+            <h2 class="modal-title" id="modal-termos-title">Termos de Uso</h2>
+            <p class="modal-subtitle">Alpha Soluções • Última atualização: Janeiro/2026</p>
+          </div>
+        </div>
+        <button class="modal-close-btn" data-close-modal aria-label="Fechar">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div class="modal-alert">
+          <i class="fa-solid fa-circle-info"></i>
+          Ao acessar e utilizar este site, você declara ter lido, compreendido e aceito integralmente os presentes Termos de Uso. Caso não concorde com qualquer condição, recomendamos que não utilize nossos serviços.
+        </div>
+
+        <h3><i class="fa-solid fa-1"></i> 1. Definições</h3>
+        <p>
+          Para fins destes Termos de Uso, aplicam-se as seguintes definições:
+        </p>
+        <ul>
+          <li><strong>"Alpha Soluções"</strong>: empresa responsável pelo desenvolvimento de landing pages, páginas de captura, otimização de CRO e consultoria de tráfego.</li>
+          <li><strong>"Usuário"</strong>: qualquer pessoa física ou jurídica que acesse, navegue ou contrate os serviços da Alpha Soluções.</li>
+          <li><strong>"Serviços"</strong>: criação, desenvolvimento, otimização e consultoria de landing pages e páginas de conversão.</li>
+          <li><strong>"Plataforma"</strong>: o site alphasolucoes.com.br e todos os seus subdomínios e canais oficiais.</li>
+        </ul>
+
+        <h3><i class="fa-solid fa-2"></i> 2. Aceitação dos Termos</h3>
+        <p>
+          O uso da Plataforma implica na aceitação plena e sem reservas destes Termos de Uso, bem como da Política de Privacidade da Alpha Soluções. O Usuário compromete-se a utilizar a Plataforma em conformidade com a legislação brasileira vigente, em especial:
+        </p>
+        <ul>
+          <li>Lei nº 12.965/2014 — Marco Civil da Internet;</li>
+          <li>Lei nº 13.709/2018 — Lei Geral de Proteção de Dados (LGPD);</li>
+          <li>Código de Defesa do Consumidor (Lei nº 8.078/1990), quando aplicável.</li>
+        </ul>
+
+        <h3><i class="fa-solid fa-3"></i> 3. Serviços Prestados</h3>
+        <p>
+          A Alpha Soluções oferece serviços especializados de engenharia digital voltados à conversão, incluindo:
+        </p>
+        <ul>
+          <li>Desenvolvimento de landing pages de alta performance;</li>
+          <li>Páginas de captura de leads e funis de conversão;</li>
+          <li>Otimização de taxa de conversão (CRO);</li>
+          <li>Copywriting persuasivo orientado a ação;</li>
+          <li>Integração com WhatsApp, CRM, Pixel e API de Conversões;</li>
+          <li>Consultoria estratégica de tráfego pago (Google Ads e Meta Ads).</li>
+        </ul>
+        <p>
+          Os prazos, escopos e valores são definidos individualmente em proposta comercial formal, que passa a integrar estes Termos após aceite do Usuário.
+        </p>
+
+        <h3><i class="fa-solid fa-4"></i> 4. Obrigações do Usuário</h3>
+        <p>O Usuário compromete-se a:</p>
+        <ul>
+          <li>Fornecer informações verdadeiras, precisas e atualizadas no momento da contratação;</li>
+          <li>Não utilizar a Plataforma para atividades ilícitas, fraudulentas ou que violem direitos de terceiros;</li>
+          <li>Não reproduzir, copiar, distribuir ou modificar conteúdos da Alpha Soluções sem autorização expressa por escrito;</li>
+          <li>Respeitar os direitos de propriedade intelectual da Alpha Soluções;</li>
+          <li>Realizar os pagamentos nas condições e prazos acordados em contrato.</li>
+        </ul>
+
+        <h3><i class="fa-solid fa-5"></i> 5. Propriedade Intelectual</h3>
+        <p>
+          Todo o conteúdo da Plataforma — incluindo textos, marcas, logotipos, layout, código-fonte, imagens, vídeos, metodologias e materiais de suporte — é de propriedade exclusiva da Alpha Soluções ou licenciado a ela, sendo protegido pela Lei de Direitos Autorais (Lei nº 9.610/1998) e pela Lei de Propriedade Industrial (Lei nº 9.279/1996).
+        </p>
+        <p>
+          O Usuário não adquire, em nenhuma hipótese, direitos de propriedade intelectual sobre os materiais da Alpha Soluções. O uso indevido poderá ensejar as medidas legais cabíveis.
+        </p>
+
+        <h3><i class="fa-solid fa-6"></i> 6. Entregas e Prazos</h3>
+        <p>
+          Os prazos de entrega são definidos em proposta comercial e contam a partir do alinhamento completo das informações necessárias. Atrasos por parte do Usuário no fornecimento de conteúdos, acessos ou aprovações poderão impactar diretamente o cronograma, sem responsabilidade da Alpha Soluções.
+        </p>
+
+        <h3><i class="fa-solid fa-7"></i> 7. Garantias e Limitação de Responsabilidade</h3>
+        <p>
+          A Alpha Soluções compromete-se a entregar serviços com excelência técnica e alinhados ao escopo contratado. No entanto:
+        </p>
+        <ul>
+          <li>Não nos responsabilizamos por resultados de vendas ou conversão, uma vez que dependem de fatores externos como oferta, mercado, investimento em tráfego e gestão comercial do Usuário;</li>
+          <li>Não nos responsabilizamos por indisponibilidades de serviços de terceiros (hospedagem, gateways, APIs do Meta/Google);</li>
+          <li>A responsabilidade total da Alpha Soluções, em qualquer hipótese, limita-se ao valor efetivamente pago pelo Usuário pelo serviço contratado.</li>
+        </ul>
+
+        <h3><i class="fa-solid fa-8"></i> 8. Pagamentos e Reajustes</h3>
+        <p>
+          Os valores dos serviços são acordados em proposta comercial. O atraso no pagamento poderá ensejar:
+        </p>
+        <ul>
+          <li>Multa de 2% sobre o valor em atraso;</li>
+          <li>Juros de mora de 1% ao mês;</li>
+          <li>Suspensão dos serviços até regularização;</li>
+          <li>Inscrição em cadastros de inadimplentes após 30 dias de atraso.</li>
+        </ul>
+
+        <h3><i class="fa-solid fa-9"></i> 9. Rescisão</h3>
+        <p>
+          O contrato poderá ser rescindido por qualquer das partes, mediante comunicação por escrito, respeitadas as condições estabelecidas em proposta comercial. Valores pagos referentes a etapas já executadas não são reembolsáveis.
+        </p>
+
+        <h3><i class="fa-solid fa-10"></i> 10. Modificações dos Termos</h3>
+        <p>
+          A Alpha Soluções reserva-se o direito de alterar, a qualquer tempo e sem aviso prévio, estes Termos de Uso, visando adequação legal, técnica ou comercial. A versão atualizada estará sempre disponível nesta Plataforma, e o uso contínuo implica aceitação das novas condições.
+        </p>
+
+        <h3><i class="fa-solid fa-11"></i> 11. Legislação Aplicável e Foro</h3>
+        <p>
+          Estes Termos de Uso são regidos pelas leis da República Federativa do Brasil. Fica eleito o foro da comarca da sede da Alpha Soluções para dirimir quaisquer controvérsias oriundas deste documento, com renúncia a qualquer outro, por mais privilegiado que seja.
+        </p>
+
+        <h3><i class="fa-solid fa-12"></i> 12. Contato</h3>
+        <p>
+          Em caso de dúvidas sobre estes Termos de Uso, entre em contato pelos nossos canais oficiais:
+        </p>
+        <ul>
+          <li><strong>E-mail:</strong> 15alpha.rmt9@gmail.com</li>
+          <li><strong>WhatsApp:</strong> disponível na seção de contato desta página</li>
+          <li><strong>Site:</strong> alphasolucoes.com.br</li>
+        </ul>
+      </div>
+
+      <div class="modal-footer">
+        <span class="modal-footer-note">
+          <i class="fa-solid fa-shield-halved" style="color: var(--accent-green);"></i>
+          Documento em conformidade com a LGPD (Lei nº 13.709/2018)
+        </span>
+        <button class="btn btn-primary" data-close-modal>
+          <span>Entendi e Aceito</span>
+          <i class="fa-solid fa-check"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ==========================================================
+       MODAL: POLÍTICA DE PRIVACIDADE
+       ========================================================== -->
+  <div class="modal-overlay" id="modal-privacidade" role="dialog" aria-modal="true" aria-labelledby="modal-priv-title">
+    <div class="modal-container">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <div class="modal-icon"><i class="fa-solid fa-user-shield"></i></div>
+          <div>
+            <h2 class="modal-title" id="modal-priv-title">Política de Privacidade</h2>
+            <p class="modal-subtitle">Alpha Soluções • Conforme LGPD (Lei nº 13.709/2018)</p>
+          </div>
+        </div>
+        <button class="modal-close-btn" data-close-modal aria-label="Fechar">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div class="modal-alert">
+          <i class="fa-solid fa-lock"></i>
+          Sua privacidade é prioridade. Esta Política descreve como a Alpha Soluções coleta, usa, armazena e protege seus dados pessoais, em conformidade com a Lei Geral de Proteção de Dados (LGPD).
+        </div>
+
+        <h3><i class="fa-solid fa-1"></i> 1. Dados Coletados</h3>
+        <p>A Alpha Soluções pode coletar os seguintes dados pessoais:</p>
+        <ul>
+          <li><strong>Dados de identificação:</strong> nome, e-mail, telefone/WhatsApp, empresa e cargo;</li>
+          <li><strong>Dados de navegação:</strong> endereço IP, tipo de dispositivo, navegador, páginas visitadas, tempo de permanência;</li>
+          <li><strong>Dados de campanha:</strong> origem de tráfego, UTM parameters, interações com anúncios;</li>
+          <li><strong>Dados de comunicação:</strong> mensagens trocadas via WhatsApp, e-mail ou formulários.</li>
+        </ul>
+
+        <h3><i class="fa-solid fa-2"></i> 2. Finalidade do Tratamento</h3>
+        <p>Os dados coletados são utilizados para:</p>
+        <ul>
+          <li>Responder solicitações de orçamento e contato comercial;</li>
+          <li>Elaborar propostas personalizadas e prestar os serviços contratados;</li>
+          <li>Enviar comunicações relevantes sobre serviços, novidades e conteúdos;</li>
+          <li>Realizar análise de performance, otimização de campanhas e métricas de conversão;</li>
+          <li>Cumprir obrigações legais, regulatórias e contratuais.</li>
+        </ul>
+
+        <h3><i class="fa-solid fa-3"></i> 3. Base Legal (Art. 7º LGPD)</h3>
+        <p>O tratamento de dados pela Alpha Soluções fundamenta-se nas seguintes bases legais:</p>
+        <ul>
+          <li><strong>Consentimento:</strong> para envio de comunicações e newsletter;</li>
+          <li><strong>Execução de contrato:</strong> para prestação dos serviços contratados;</li>
+          <li><strong>Legítimo interesse:</strong> para análise de métricas, prevenção a fraudes e melhoria dos serviços;</li>
+          <li><strong>Cumprimento de obrigação legal:</strong> para atendimento a exigências fiscais e regulatórias.</li>
+        </ul>
+
+        <h3><i class="fa-solid fa-4"></i> 4. Compartilhamento de Dados</h3>
+        <p>
+          A Alpha Soluções não vende, aluga ou comercializa dados pessoais. O compartilhamento ocorre apenas com:
+        </p>
+        <ul>
+          <li>Plataformas de anúncios (Meta Ads, Google Ads) para fins de mensuração e otimização de campanhas;</li>
+          <li>Ferramentas de analytics (Google Analytics 4) para análise de navegação;</li>
+          <li>Provedores de hospedagem e infraestrutura técnica;</li>
+          <li>Autoridades públicas, quando exigido por lei.</li>
+        </ul>
+
+        <h3><i class="fa-solid fa-5"></i> 5. Armazenamento e Segurança</h3>
+        <p>
+          Os dados são armazenados em servidores seguros, com criptografia em trânsito (HTTPS/SSL) e em repouso. Adotamos medidas técnicas e administrativas para proteger os dados contra acessos não autorizados, perdas, alterações ou destruição.
+        </p>
+        <p>
+          O prazo de retenção dos dados observa a finalidade da coleta e as obrigações legais aplicáveis, sendo descartados de forma segura após esse período.
+        </p>
+
+        <h3><i class="fa-solid fa-6"></i> 6. Direitos do Titular (Art. 18 LGPD)</h3>
+        <p>Você, como titular de dados, tem direito a:</p>
+        <ul>
+          <li>Confirmação da existência de tratamento;</li>
+          <li>Acesso aos dados armazenados;</li>
+          <li>Correção de dados incompletos, inexatos ou desatualizados;</li>
+          <li>Anonimização, bloqueio ou eliminação de dados desnecessários;</li>
+          <li>Portabilidade dos dados a outro fornecedor;</li>
+          <li>Eliminação dos dados tratados com consentimento;</li>
+          <li>Revogação do consentimento a qualquer momento;</li>
+          <li>Informação sobre compartilhamento de dados.</li>
+        </ul>
+        <p>
+          Para exercer qualquer desses direitos, entre em contato pelo e-mail <strong>15alpha.rmt9@gmail.com</strong>.
+        </p>
+
+        <h3><i class="fa-solid fa-7"></i> 7. Cookies e Tecnologias de Rastreamento</h3>
+        <p>
+          Utilizamos cookies e pixels de rastreamento (Meta Pixel, Google Ads Tag, GA4) para mensurar conversões e otimizar anúncios. O usuário pode desativar cookies nas configurações do navegador, mas isso pode impactar a experiência de navegação.
+        </p>
+
+        <h3><i class="fa-solid fa-8"></i> 8. Encarregado de Dados (DPO)</h3>
+        <p>
+          Nosso Encarregado de Proteção de Dados (DPO) está disponível para esclarecer dúvidas sobre esta Política ou sobre o tratamento de seus dados:
+        </p>
+        <ul>
+          <li><strong>E-mail:</strong> 15alpha.rmt9@gmail.com</li>
+          <li><strong>Atendimento:</strong> em horário comercial, com resposta em até 15 dias úteis.</li>
+        </ul>
+
+        <h3><i class="fa-solid fa-9"></i> 9. Alterações nesta Política</h3>
+        <p>
+          Esta Política pode ser atualizada periodicamente para refletir mudanças legais ou operacionais. A versão mais recente estará sempre disponível nesta página, com a data da última atualização. 29/29/2026.
+        </p>
+
+        <h3><i class="fa-solid fa-10"></i> 10. Contato</h3>
+        <p>
+          Em caso de dúvidas, solicitações ou reclamações relacionadas à privacidade, entre em contato:
+        </p>
+        <ul>
+          <li><strong>E-mail:</strong> 15alpha.rmt9@gmail.com</li>
+          <li><strong>WhatsApp:</strong> disponível na seção de contato desta página</li>
+          <li><strong>Site:</strong> alphasolucoes.com.br</li>
+        </ul>
+      </div>
+
+      <div class="modal-footer">
+        <span class="modal-footer-note">
+          <i class="fa-solid fa-shield-halved" style="color: var(--accent-green);"></i>
+          Documento em conformidade com a LGPD (Lei nº 13.709/2018)
+        </span>
+        <button class="btn btn-primary" data-close-modal>
+          <span>Entendi</span>
+          <i class="fa-solid fa-check"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ==========================================================
+       MODAL: SEGURANÇA DA INFORMAÇÃO
+       ========================================================== -->
+  <div class="modal-overlay" id="modal-seguranca" role="dialog" aria-modal="true" aria-labelledby="modal-seg-title">
+    <div class="modal-container">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <div class="modal-icon"><i class="fa-solid fa-shield-halved"></i></div>
+          <div>
+            <h2 class="modal-title" id="modal-seg-title">Segurança da Informação</h2>
+            <p class="modal-subtitle">Alpha Soluções • Compromisso com a Proteção de Dados</p>
+          </div>
+        </div>
+        <button class="modal-close-btn" data-close-modal aria-label="Fechar">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div class="modal-alert">
+          <i class="fa-solid fa-shield-halved"></i>
+          A Alpha Soluções adota práticas rigorosas de segurança da informação para proteger os dados de seus clientes, parceiros e usuários, em conformidade com a LGPD e as melhores práticas do mercado (ISO 27001, OWASP Top 10).
+        </div>
+
+        <h3><i class="fa-solid fa-lock"></i> 1. Criptografia</h3>
+        <ul>
+          <li><strong>Em trânsito:</strong> todos os dados trafegam via HTTPS com certificado SSL/TLS de 256 bits;</li>
+          <li><strong>Em repouso:</strong> dados sensíveis são armazenados com criptografia AES-256;</li>
+          <li><strong>Backups:</strong> rotinas de backup criptografadas e armazenadas em ambientes redundantes.</li>
+        </ul>
+
+        <h3><i class="fa-solid fa-user-lock"></i> 2. Controle de Acesso</h3>
+        <ul>
+          <li>Acesso restrito por credenciais individuais e autenticação em dois fatores (2FA);</li>
+          <li>Princípio do menor privilégio: cada colaborador acessa apenas o necessário para sua função;</li>
+          <li>Revisão periódica de permissões e revogação imediata em caso de desligamento;</li>
+          <li>Registro de logs de acesso e auditoria de atividades.</li>
+        </ul>
+
+        <h3><i class="fa-solid fa-server"></i> 3. Infraestrutura</h3>
+        <ul>
+          <li>Hospedagem em provedores reconhecidos com certificações de segurança internacionais;</li>
+          <li>Firewalls, proteção contra DDoS e monitoramento contínuo de ameaças;</li>
+          <li>Ambientes de produção e desenvolvimento segregados;</li>
+          <li>Atualizações de segurança aplicadas de forma tempestiva.</li>
+        </ul>
+
+        <h3><i class="fa-solid fa-user-graduate"></i> 4. Política de Pessoas</h3>
+        <ul>
+          <li>Colaboradores e parceiros assinam Termo de Confidencialidade (NDA);</li>
+          <li>Treinamentos periódicos sobre LGPD, segurança da informação e boas práticas;</li>
+          <li>Cultura de segurança com reporte imediato de incidentes;</li>
+          <li>Processo disciplinar em caso de violação das políticas internas.</li>
+        </ul>
+
+        <h3><i class="fa-solid fa-triangle-exclamation"></i> 5. Resposta a Incidentes</h3>
+        <p>
+          Em caso de incidente de segurança que possa acarretar risco ou dano relevante aos titulares, a Alpha Soluções compromete-se a:
+        </p>
+        <ul>
+          <li>Comunicar os titulares afetados e a Autoridade Nacional de Proteção de Dados (ANPD) em prazo razoável;</li>
+          <li>Adotar medidas imediatas de contenção e mitigação;</li>
+          <li>Investigar causas e implementar melhorias para evitar recorrência;</li>
+          <li>Documentar o incidente e as ações tomadas.</li>
+        </ul>
+
+        <h3><i class="fa-solid fa-check-double"></i> 6. Boas Práticas no Desenvolvimento</h3>
+        <ul>
+          <li>Código-fonte seguindo as diretrizes OWASP Top 10 (proteção contra XSS, SQL Injection, CSRF);</li>
+          <li>Validação e sanitização de todos os inputs de formulários;</li>
+          <li>Revisão de código e testes de segurança antes da publicação;</li>
+          <li>Dependências atualizadas e livres de vulnerabilidades conhecidas.</li>
+        </ul>
+
+        <h3><i class="fa-solid fa-envelope"></i> 7. Canal de Segurança</h3>
+        <p>
+          Para reportar vulnerabilidades, incidentes ou dúvidas relacionadas à segurança da informação:
+        </p>
+        <ul>
+          <li><strong>E-mail:</strong> 15alpha.rmt9@gmail.com</li>
+          <li><strong>Resposta:</strong> em até 48 horas úteis</li>
+          <li><strong>Divulgação responsável:</strong> tratamos todos os relatos com confidencialidade</li>
+        </ul>
+      </div>
+
+      <div class="modal-footer">
+        <span class="modal-footer-note">
+          <i class="fa-solid fa-shield-halved" style="color: var(--accent-green);"></i>
+          Compromisso com a segurança e privacidade dos dados
+        </span>
+        <button class="btn btn-primary" data-close-modal>
+          <span>Entendi</span>
+          <i class="fa-solid fa-check"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ==========================================================
+       MODAL: LGPD COMPLIANCE
+       ========================================================== -->
+  <div class="modal-overlay" id="modal-lgpd" role="dialog" aria-modal="true" aria-labelledby="modal-lgpd-title">
+    <div class="modal-container">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <div class="modal-icon"><i class="fa-solid fa-scale-balanced"></i></div>
+          <div>
+            <h2 class="modal-title" id="modal-lgpd-title">LGPD Compliance</h2>
+            <p class="modal-subtitle">Lei Geral de Proteção de Dados • Lei nº 13.709/2018</p>
+          </div>
+        </div>
+        <button class="modal-close-btn" data-close-modal aria-label="Fechar">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div class="modal-alert">
+          <i class="fa-solid fa-scale-balanced"></i>
+          A Alpha Soluções está comprometida com o cumprimento integral da Lei Geral de Proteção de Dados (LGPD). Este documento apresenta nosso programa de adequação e como garantimos os direitos dos titulares.
+        </div>
+
+        <h3><i class="fa-solid fa-book"></i> 1. O que é a LGPD?</h3>
+        <p>
+          A Lei nº 13.709/2018 (LGPD) estabelece regras sobre coleta, armazenamento, tratamento e compartilhamento de dados pessoais no Brasil, com o objetivo de proteger os direitos fundamentais de liberdade, privacidade e o livre desenvolvimento da personalidade da pessoa natural.
+        </p>
+
+        <h3><i class="fa-solid fa-user-check"></i> 2. Nosso Compromisso</h3>
+        <ul>
+          <li>Tratar dados pessoais apenas para finalidades legítimas, específicas e informadas;</li>
+          <li>Garantir transparência sobre como os dados são utilizados;</li>
+          <li>Adotar medidas técnicas e administrativas de segurança;</li>
+          <li>Respeitar todos os direitos dos titulares previstos na lei;</li>
+          <li>Manter registro atualizado das operações de tratamento.</li>
+        </ul>
+
+        <h3><i class="fa-solid fa-list-check"></i> 3. Bases Legais Utilizadas</h3>
+        <p>A Alpha Soluções fundamenta o tratamento de dados nas seguintes bases legais:</p>
+        <ul>
+          <li><strong>Consentimento (Art. 7º, I):</strong> para comunicações e newsletter;</li>
+          <li><strong>Execução de contrato (Art. 7º, V):</strong> para prestação dos serviços;</li>
+          <li><strong>Legítimo interesse (Art. 7º, IX):</strong> para analytics, segurança e prevenção a fraudes;</li>
+          <li><strong>Cumprimento de obrigação legal (Art. 7º, II):</strong> para atendimento a exigências fiscais e regulatórias.</li>
+        </ul>
+
+        <h3><i class="fa-solid fa-users"></i> 4. Direitos dos Titulares</h3>
+        <p>Garantimos aos titulares o exercício de todos os direitos previstos no Art. 18 da LGPD:</p>
+        <ul>
+          <li>Confirmação da existência de tratamento;</li>
+          <li>Acesso aos dados;</li>
+          <li>Correção de dados incompletos ou desatualizados;</li>
+          <li>Anonimização, bloqueio ou eliminação de dados desnecessários;</li>
+          <li>Portabilidade a outro fornecedor;</li>
+          <li>Eliminação de dados tratados com consentimento;</li>
+          <li>Informação sobre compartilhamento;</li>
+          <li>Revogação do consentimento.</li>
+        </ul>
+
+        <h3><i class="fa-solid fa-envelope-circle-check"></i> 5. Como Exercer Seus Direitos</h3>
+        <p>
+          Para exercer qualquer direito previsto na LGPD, o titular pode entrar em contato pelos canais:
+        </p>
+        <ul>
+          <li><strong>E-mail do DPO:</strong> 15alpha.rmt9@gmail.com</li>
+          <li><strong>E-mail geral:</strong> privacidade@alphasolucoes.com.br</li>
+          <li><strong>Prazo de resposta:</strong> até 15 dias úteis, conforme regulamentação da ANPD</li>
+        </ul>
+
+        <h3><i class="fa-solid fa-database"></i> 6. Registro de Operações (ROPA)</h3>
+        <p>
+          Mantemos um Registro de Operações de Tratamento de Dados (ROPA) atualizado, contemplando: categorias de dados, finalidades, bases legais, prazos de retenção, destinatários e medidas de segurança aplicadas.
+        </p>
+
+        <h3><i class="fa-solid fa-user-tie"></i> 7. Encarregado de Dados (DPO)</h3>
+        <p>
+          Nosso Encarregado de Proteção de Dados é o ponto de contato entre a Alpha Soluções, os titulares de dados e a Autoridade Nacional de Proteção de Dados (ANPD).
+        </p>
+        <ul>
+          <li><strong>Atribuições:</strong> aceitar reclamações, prestar esclarecimentos, orientar colaboradores e executar as demais atribuições previstas na LGPD;</li>
+          <li><strong>E-mail:</strong> 15alpha.rmt9@gmail.com</li>
+          <li><strong>Horário:</strong> comercial, de segunda a sexta-feira.</li>
+        </ul>
+
+        <h3><i class="fa-solid fa-arrows-rotate"></i> 8. Atualizações e Melhoria Contínua</h3>
+        <p>
+          Nosso programa de adequação à LGPD é revisado periodicamente para acompanhar mudanças legislativas, regulamentações da ANPD e boas práticas de mercado. A segurança e a privacidade dos dados são prioridades estratégicas da Alpha Soluções.
+        </p>
+
+        <h3><i class="fa-solid fa-gavel"></i> 9. Penalidades e Responsabilidades</h3>
+        <p>
+          O descumprimento da LGPD pode acarretar sanções administrativas previstas no Art. 52 da Lei, incluindo advertência, multa de até 2% do faturamento anual (limitada a R$ 50 milhões por infração), publicização da infração, bloqueio ou eliminação dos dados.
+        </p>
+
+        <h3><i class="fa-solid fa-circle-check"></i> 10. Conformidade Alpha</h3>
+        <p>
+          A Alpha Soluções declara estar em conformidade com a LGPD, adotando as seguintes práticas:
+        </p>
+        <ul>
+          <li>Mapeamento completo de dados pessoais tratados;</li>
+          <li>Política de Privacidade e Termos de Uso atualizados;</li>
+          <li>Contratos com cláusulas de proteção de dados com fornecedores;</li>
+          <li>Treinamento contínuo da equipe sobre proteção de dados;</li>
+          <li>Canal dedicado ao titular e ao DPO;</li>
+          <li>Procedimentos de resposta a incidentes de segurança.</li>
+        </ul>
+      </div>
+
+      <div class="modal-footer">
+        <span class="modal-footer-note">
+          <i class="fa-solid fa-shield-halved" style="color: var(--accent-green);"></i>
+          Em conformidade com a Lei nº 13.709/2018 (LGPD)
+        </span>
+        <button class="btn btn-primary" data-close-modal>
+          <span>Entendi</span>
+          <i class="fa-solid fa-check"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ==========================================================
+       BANNER DE COOKIES LGPD
+       ========================================================== */
+    (function() {
+      'use strict';
+
+      const COOKIE_KEY = 'alpha_cookie_consent_v1';
+      const banner = document.getElementById('cookie-banner');
+      const preferences = document.getElementById('cookie-preferences');
+      const floatBtn = document.getElementById('cookie-float-btn');
+      const analyticsToggle = document.getElementById('cookie-analytics');
+      const marketingToggle = document.getElementById('cookie-marketing');
+
+      /* ---------- Verifica consentimento salvo ---------- */
+      function getConsent() {
+        try {
+          return JSON.parse(localStorage.getItem(COOKIE_KEY));
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function saveConsent(consent) {
+        localStorage.setItem(COOKIE_KEY, JSON.stringify({
+          ...consent,
+          timestamp: new Date().toISOString(),
+          version: '1.0'
+        }));
+      }
+
+      /* ---------- Aplica consentimento ---------- */
+      function applyConsent(consent) {
+  // Google Analytics 4
+  if (consent.analytics && window.ALPHA_TRACKING.GA4_ID !== 'G-XXXXXXXXXX') {
+    if (!window.__ga4_loaded) {
+      window.__ga4_loaded = true;
+      const s = document.createElement('script');
+      s.async = true;
+      s.src = `https://www.googletagmanager.com/gtag/js?id=${window.ALPHA_TRACKING.GA4_ID}`;
+      document.head.appendChild(s);
+
+      window.dataLayer = window.dataLayer || [];
+      window.gtag = function(){ dataLayer.push(arguments); };
+      gtag('js', new Date());
+      gtag('config', window.ALPHA_TRACKING.GA4_ID, { anonymize_ip: true });
+      console.log('📊 GA4 carregado');
+    }
+  }
+
+  // Meta Pixel
+  if (consent.marketing && window.ALPHA_TRACKING.META_PIXEL_ID !== '000000000000000') {
+    if (!window.__meta_pixel_loaded) {
+      window.__meta_pixel_loaded = true;
+      !function(f,b,e,v,n,t,s){
+        if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+        n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+        if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+        n.queue=[];t=b.createElement(e);t.async=!0;
+        t.src=v;s=b.getElementsByTagName(e)[0];
+        s.parentNode.insertBefore(t,s)}(window,document,'script',
+        'https://connect.facebook.net/en_US/fbevents.js');
+        fbq('init', window.ALPHA_TRACKING.META_PIXEL_ID);
+        fbq('track', 'PageView');
+        console.log('📊 Meta Pixel carregado');
+      }
+  }
+
+  // Google Ads
+  if (consent.marketing && window.ALPHA_TRACKING.GOOGLE_ADS_ID !== 'AW-XXXXXXXXX') {
+    if (!window.__gads_loaded) {
+      window.__gads_loaded = true;
+      const s = document.createElement('script');
+      s.async = true;
+      s.src = `https://www.googletagmanager.com/gtag/js?id=${window.ALPHA_TRACKING.GOOGLE_ADS_ID}`;
+      document.head.appendChild(s);
+
+      window.dataLayer = window.dataLayer || [];
+      window.gtag = window.gtag || function(){ dataLayer.push(arguments); };
+      gtag('js', new Date());
+      gtag('config', window.ALPHA_TRACKING.GOOGLE_ADS_ID);
+      console.log('📊 Google Ads carregado');
+    }
+  }
+
+  console.log('🍪 Consentimento aplicado:', consent);
+}
+        // Aqui você integraria com GA4 e Meta Pixel
+        // Exemplo:
+        // if (consent.analytics) { /* carregar GA4 */ }
+        // if (consent.marketing) { /* carregar Meta Pixel */ }
+        console.log('🍪 Consentimento aplicado:', consent);
+      }
+      // Dispara eventos de conversão (respeitando consentimento)
+const consent = JSON.parse(localStorage.getItem('alpha_cookie_consent_v1') || '{}');
+
+if (consent.analytics && typeof gtag === 'function') {
+  gtag('event', 'generate_lead', {
+    event_category: 'form',
+    event_label: 'contato_landing',
+    value: 1
+  });
+}
+
+if (consent.marketing && typeof fbq === 'function') {
+  fbq('track', 'Lead', {
+    content_name: 'Landing Alpha Soluções',
+    value: 1,
+    currency: 'BRL'
+  });
+}
+
+      /* ---------- Abre/fecha banner ---------- */
+      function showBanner() {
+        banner.classList.add('visible');
+        floatBtn.classList.remove('visible');
+      }
+
+      function hideBanner() {
+        banner.classList.remove('visible');
+        preferences.classList.remove('visible');
+        floatBtn.classList.add('visible');
+      }
+
+      /* ---------- Mostra painel de personalização ---------- */
+      function showPreferences() {
+        preferences.classList.add('visible');
+        banner.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }
+
+      /* ---------- Inicialização ---------- */
+      const savedConsent = getConsent();
+
+      if (!savedConsent) {
+        // Sem consentimento: mostra banner após 1.5s
+        setTimeout(showBanner, 1500);
+      } else {
+        // Já consentiu: aplica e mostra botão flutuante
+        applyConsent(savedConsent);
+        floatBtn.classList.add('visible');
+      }
+
+      /* ---------- Eventos ---------- */
+      // Aceitar Todos
+      document.getElementById('cookie-accept').addEventListener('click', function() {
+        const consent = { essential: true, analytics: true, marketing: true };
+        saveConsent(consent);
+        applyConsent(consent);
+        hideBanner();
+      });
+
+      // Recusar (mantém apenas essenciais)
+      document.getElementById('cookie-reject').addEventListener('click', function() {
+        const consent = { essential: true, analytics: false, marketing: false };
+        saveConsent(consent);
+        applyConsent(consent);
+        hideBanner();
+      });
+
+      // Personalizar
+      document.getElementById('cookie-customize').addEventListener('click', showPreferences);
+
+      // Salvar preferências personalizadas
+      document.getElementById('cookie-pref-save').addEventListener('click', function() {
+        const consent = {
+          essential: true,
+          analytics: analyticsToggle.checked,
+          marketing: marketingToggle.checked
+        };
+        saveConsent(consent);
+        applyConsent(consent);
+        hideBanner();
+      });
+
+      // Recusar todos (dentro das preferências)
+      document.getElementById('cookie-pref-reject').addEventListener('click', function() {
+        analyticsToggle.checked = false;
+        marketingToggle.checked = false;
+        const consent = { essential: true, analytics: false, marketing: false };
+        saveConsent(consent);
+        applyConsent(consent);
+        hideBanner();
+      });
+
+      // Reabrir preferências pelo botão flutuante
+      floatBtn.addEventListener('click', function() {
+        const current = getConsent() || {};
+        analyticsToggle.checked = current.analytics !== false;
+        marketingToggle.checked = current.marketing !== false;
+        showBanner();
+        showPreferences();
+      });
+    })();
+
+
+    /* ==========================================================
+       FORMULÁRIO DE CONTATO + VALIDAÇÃO + CONSENTIMENTO LGPD
+       ========================================================== */
+    (function() {
+      'use strict';
+
+      const form = document.getElementById('contact-form');
+      const submitBtn = document.getElementById('submit-btn');
+      const feedback = document.getElementById('form-feedback');
+
+      // Número de WhatsApp da empresa (substitua pelo real)
+      const WHATSAPP_NUMBER = '5569992684476';
+
+      /* ---------- Máscara de telefone ---------- */
+      const whatsappInput = document.getElementById('whatsapp');
+      whatsappInput.addEventListener('input', function(e) {
+        let v = e.target.value.replace(/\D/g, '');
+        if (v.length > 11) v = v.slice(0, 11);
+
+        if (v.length > 6) {
+          if (v.length === 11) {
+            e.target.value = `(${v.slice(0,2)}) ${v.slice(2,7)}-${v.slice(7)}`;
+          } else {
+            e.target.value = `(${v.slice(0,2)}) ${v.slice(2,6)}-${v.slice(6)}`;
+          }
+        } else if (v.length > 2) {
+          e.target.value = `(${v.slice(0,2)}) ${v.slice(2)}`;
+        } else if (v.length > 0) {
+          e.target.value = `(${v}`;
+        } else {
+          e.target.value = '';
+        }
+      });
+
+      /* ---------- Helpers de validação ---------- */
+      function showError(fieldName, message) {
+        const errorEl = document.querySelector(`[data-error-for="${fieldName}"]`);
+        const inputEl = document.getElementById(fieldName);
+        if (errorEl) {
+          if (message) {
+            errorEl.querySelector('span').textContent = message;
+          }
+          errorEl.classList.add('visible');
+        }
+        if (inputEl) inputEl.classList.add('error');
+      }
+
+      function clearError(fieldName) {
+        const errorEl = document.querySelector(`[data-error-for="${fieldName}"]`);
+        const inputEl = document.getElementById(fieldName);
+        if (errorEl) errorEl.classList.remove('visible');
+        if (inputEl) inputEl.classList.remove('error');
+      }
+
+      function clearAllErrors() {
+        document.querySelectorAll('.form-error.visible').forEach(el => el.classList.remove('visible'));
+        document.querySelectorAll('.form-input.error, .form-select.error, .form-textarea.error').forEach(el => el.classList.remove('error'));
+        document.querySelector('.form-consent').classList.remove('error');
+      }
+
+      /* ---------- Validação dos campos ---------- */
+      function validateForm() {
+        clearAllErrors();
+        let isValid = true;
+
+        // Nome
+        const nome = document.getElementById('nome').value.trim();
+        if (nome.length < 3) {
+          showError('nome', 'Por favor, informe seu nome completo.');
+          isValid = false;
+        }
+
+        // E-mail
+        const email = document.getElementById('email').value.trim();
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+          showError('email', 'Informe um e-mail válido (ex: voce@empresa.com.br).');
+          isValid = false;
+        }
+
+        // WhatsApp
+        const whatsapp = document.getElementById('whatsapp').value.replace(/\D/g, '');
+        if (whatsapp.length < 10 || whatsapp.length > 11) {
+          showError('whatsapp', 'Informe um WhatsApp válido com DDD.');
+          isValid = false;
+        }
+
+        // Investimento
+        const investimento = document.getElementById('investimento').value;
+        if (!investimento) {
+          showError('investimento', 'Selecione uma faixa de investimento.');
+          isValid = false;
+        }
+
+        // Consentimento LGPD
+        const consentimento = document.getElementById('consentimento').checked;
+        if (!consentimento) {
+          showError('consentimento', 'É necessário aceitar os termos para enviar o formulário.');
+          document.querySelector('.form-consent').classList.add('error');
+          isValid = false;
+        }
+
+        return isValid;
+      }
+
+      /* ---------- Limpa erro ao digitar ---------- */
+      ['nome', 'email', 'whatsapp', 'investimento'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.addEventListener('input', () => clearError(id));
+          el.addEventListener('change', () => clearError(id));
+        }
+      });
+
+      document.getElementById('consentimento').addEventListener('change', function() {
+        if (this.checked) {
+          clearError('consentimento');
+          document.querySelector('.form-consent').classList.remove('error');
+        }
+      });
+
+      /* ---------- Feedback visual ---------- */
+      function showFeedback(type, title, message) {
+        feedback.className = 'form-feedback visible ' + type;
+        const icon = type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation';
+        feedback.innerHTML = `
+          <i class="fa-solid ${icon}"></i>
+          <div>
+            <strong>${title}</strong>
+            <span>${message}</span>
+          </div>
+        `;
+        feedback.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+
+      function hideFeedback() {
+        feedback.classList.remove('visible');
+      }
+
+      /* ---------- Envio do formulário ---------- */
+      form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        hideFeedback();
+
+        if (!validateForm()) {
+          showFeedback('error', 'Verifique os campos', 'Alguns campos precisam ser corrigidos antes de enviar.');
+          return;
+        }
+
+        // Estado de loading
+        submitBtn.classList.add('loading');
+
+        // Coleta dos dados
+        const formData = {
+          nome: document.getElementById('nome').value.trim(),
+          email: document.getElementById('email').value.trim(),
+          whatsapp: document.getElementById('whatsapp').value.trim(),
+          empresa: document.getElementById('empresa').value.trim(),
+          investimento: document.getElementById('investimento').value,
+          mensagem: document.getElementById('mensagem').value.trim(),
+          consentimento: true,
+          timestamp: new Date().toISOString(),
+          origem: window.location.href
+        };
+
+        /* ==========================================================
+           OPCIONAL: Envio para backend / API
+           ==========================================================
+           Descomente e ajuste conforme seu backend:
+
+           try {
+             const response = await fetch('/api/contato', {
+               method: 'POST',
+               headers: { 'Content-Type': 'application/json' },
+               body: JSON.stringify(formData)
+             });
+             if (!response.ok) throw new Error('Erro no envio');
+           } catch (err) {
+             submitBtn.classList.remove('loading');
+             showFeedback('error', 'Erro ao enviar', 'Tente novamente ou fale conosco pelo WhatsApp.');
+             return;
+           }
+        ========================================================== */
+
+        // Simula envio (remova em produção)
+        await new Promise(resolve => setTimeout(resolve, 1200));
+
+        // Monta mensagem para o WhatsApp
+        const waMessage = 
+          `*Nova Solicitação — Alpha Soluções*%0A%0A` +
+          `*Nome:* ${encodeURIComponent(formData.nome)}%0A` +
+          `*E-mail:* ${encodeURIComponent(formData.email)}%0A` +
+          `*WhatsApp:* ${encodeURIComponent(formData.whatsapp)}%0A` +
+          `*Empresa:* ${encodeURIComponent(formData.empresa || 'Não informado')}%0A` +
+          `*Investimento em Ads:* ${encodeURIComponent(formData.investimento)}%0A` +
+          `*Mensagem:* ${encodeURIComponent(formData.mensagem || 'Sem mensagem adicional')}%0A%0A` +
+          `✅ Consentimento LGPD: Autorizado`;
+
+        // Sucesso
+        submitBtn.classList.remove('loading');
+        showFeedback(
+          'success',
+          'Solicitação enviada com sucesso!',
+          'Redirecionando para o WhatsApp... Caso não abra, verifique o bloqueador de pop-ups.'
+        );
+
+        // Salva consentimento LGPD no localStorage (registro)
+        try {
+          const lgpdLog = JSON.parse(localStorage.getItem('alpha_lgpd_log') || '[]');
+          lgpdLog.push({
+            timestamp: formData.timestamp,
+            email: formData.email,
+            consentimento: true,
+            versao: '1.0'
+          });
+          localStorage.setItem('alpha_lgpd_log', JSON.stringify(lgpdLog));
+        } catch (e) { /* silent */ }
+
+        // Abre WhatsApp após 1.2s
+        setTimeout(() => {
+          window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${waMessage}`, '_blank');
+          form.reset();
+          setTimeout(hideFeedback, 5000);
+        }, 1200);
+      });
+    })();
+  </script>
+  <!-- ==========================================================
+       JAVASCRIPT — CONTROLE DOS MODAIS
+       ========================================================== -->
+  <script>
+    (function() {
+      'use strict';
+
+      /* ==========================================================
+         CONFIGURAÇÃO DOS MODAIS
+         ========================================================== */
+      const modalMap = {
+        'termos': 'modal-termos',
+        'privacidade': 'modal-privacidade',
+        'seguranca': 'modal-seguranca',
+        'lgpd': 'modal-lgpd'
+      };
+
+      /* ==========================================================
+         FUNÇÕES DE ABERTURA / FECHAMENTO
+         ========================================================== */
+      function openModal(modalId) {
+        const modal = document.getElementById(modalId);
+        if (!modal) return;
+
+        modal.classList.add('active');
+        document.body.classList.add('modal-open');
+        document.body.style.overflow = 'hidden';
+
+        // Foco no botão de fechar (acessibilidade)
+        const closeBtn = modal.querySelector('.modal-close-btn');
+        if (closeBtn) {
+          setTimeout(() => closeBtn.focus(), 100);
+        }
+      }
+
+      function closeModal(modal) {
+        if (!modal) return;
+        modal.classList.remove('active');
+
+        // Restaura scroll se nenhum outro modal estiver aberto
+        const anyOpen = document.querySelector('.modal-overlay.active');
+        if (!anyOpen) {
+          document.body.classList.remove('modal-open');
+          document.body.style.overflow = '';
+        }
+      }
+
+      function closeAllModals() {
+        document.querySelectorAll('.modal-overlay.active').forEach(modal => {
+          modal.classList.remove('active');
+        });
+        document.body.classList.remove('modal-open');
+        document.body.style.overflow = '';
+      }
+
+      /* ==========================================================
+         EVENTOS — ABERTURA DOS MODAIS
+         ========================================================== */
+      document.querySelectorAll('[data-modal]').forEach(trigger => {
+        trigger.addEventListener('click', function(e) {
+          e.preventDefault();
+          const modalKey = this.getAttribute('data-modal');
+          const modalId = modalMap[modalKey];
+          if (modalId) openModal(modalId);
+        });
+      });
+
+      /* ==========================================================
+         EVENTOS — FECHAMENTO DOS MODAIS
+         ========================================================== */
+      // Botões de fechar (ícone X e "Entendi")
+      document.querySelectorAll('[data-close-modal]').forEach(btn => {
+        btn.addEventListener('click', function() {
+          const modal = this.closest('.modal-overlay');
+          closeModal(modal);
+        });
+      });
+
+      // Clique fora do modal (overlay)
+      document.querySelectorAll('.modal-overlay').forEach(overlay => {
+        overlay.addEventListener('click', function(e) {
+          if (e.target === this) {
+            closeModal(this);
+          }
+        });
+      });
+
+      // Tecla ESC para fechar
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' || e.key === 'Esc') {
+          closeAllModals();
+        }
+      });
+
+      /* ==========================================================
+         ACESSIBILIDADE — FOCUS TRAP SIMPLIFICADO
+         ========================================================== */
+      document.addEventListener('keydown', function(e) {
+        if (e.key !== 'Tab') return;
+
+        const activeModal = document.querySelector('.modal-overlay.active .modal-container');
+        if (!activeModal) return;
+
+        const focusable = activeModal.querySelectorAll(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusable.length === 0) return;
+
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      });
+
+    })();
+  </script>
+
+</body>
+</html>
